@@ -12,6 +12,9 @@ RUN go mod download
 # Copy the rest of the application source code
 COPY . .
 
+# Verify contents (temporary)
+RUN ls -la /app
+
 # Build the static binary for the command-line tool
 # CGO_ENABLED=0 produces a static binary, important for distroless/scratch images
 # -ldflags="-s -w" strips debug symbols and DWARF info, reducing binary size
