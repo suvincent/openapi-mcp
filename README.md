@@ -26,6 +26,8 @@ OpenAPI-MCP is a dockerized MCP server that reads a `swagger.json` or `openapi.y
 
 Run the demo yourself: [Running the Weatherbit Example (Step-by-Step)](#running-the-weatherbit-example-step-by-step)
 
+![demo](https://github.com/user-attachments/assets/4d457137-5da4-422a-b323-afd4b175bd56)
+
 ## Why OpenAPI-MCP?
 
 -   **Standard Compliance:** Leverage your existing OpenAPI/Swagger documentation.
