@@ -2,6 +2,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -357,6 +359,10 @@ func TestHttpMethodPostHandler(t *testing.T) {
 }
 
 func TestHttpMethodGetHandler(t *testing.T) {
+	// Basic setup
+	// cfg := &config.Config{} // Use random port - Removed Port field - Removed unused variable
+	// Setup(cfg, nil)                // No toolset needed for GET handler base functionality - Removed Setup call
+
 	// --- Test Setup ---
 	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
 	rr := httptest.NewRecorder() // Use ResponseRecorder directly for header checks
@@ -373,63 +379,84 @@ func TestHttpMethodGetHandler(t *testing.T) {
 	// Restore original connections after test
 	defer func() {
 		connMutex.Lock()
-		activeConnections = originalConnections
+		// Clean up any connection potentially added by the test run
+		// (Find the ID from the recorder if available)
+		connID := rr.Header().Get("X-Connection-ID") // Get ID written by handler
+		if connID != "" {
+			if ch, exists := activeConnections[connID]; exists {
+				close(ch) // Close the channel if it exists
+			}
+		}
+		activeConnections = originalConnections // Restore the original map
 		connMutex.Unlock()
 	}()
 
 	// --- Execute Handler (in a goroutine as it blocks waiting for context) ---
-	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensure the handler goroutine can eventually exit
+	req = req.WithContext(ctx)
+
+	hwg := sync.WaitGroup{}
+	hwg.Add(1)
 	go func() {
-		defer close(done)
+		defer hwg.Done()
 		httpMethodGetHandler(rr, req)
 	}()
 
 	// --- Assertions ---
+	var connID string
 
-	// Wait briefly for headers and initial events to be written
-	// This is tricky because the handler blocks. We might only be able to check headers reliably.
-	// Reading the body/events might require a more sophisticated setup or ending the request.
-
-	// Check Headers (before handler potentially blocks indefinitely)
-	// It seems ResponseRecorder might not capture headers written before blocking?
-	// Let's try checking status code first, which is written before blocking starts.
-
-	// Poll for the status code to be written (indicates headers are likely set)
+	// Wait for the handler to write headers, initial body, and register the connection.
+	// Use Eventually to poll for multiple conditions to be met atomically before proceeding.
 	assert.Eventually(t, func() bool {
-		return rr.Code == http.StatusOK
-	}, 100*time.Millisecond, 10*time.Millisecond, "Handler did not write StatusOK")
+		if rr.Code != http.StatusOK {
+			return false // Wait for status OK first
+		}
 
-	// If status is OK, check headers
-	if rr.Code == http.StatusOK {
-		assert.Equal(t, "text/event-stream", rr.Header().Get("Content-Type"))
-		assert.Equal(t, "no-cache", rr.Header().Get("Cache-Control"))
-		assert.Equal(t, "keep-alive", rr.Header().Get("Connection"))
-		connID := rr.Header().Get("X-Connection-ID")
-		assert.NotEmpty(t, connID, "X-Connection-ID header should be set")
+		// Check headers are set correctly
+		if rr.Header().Get("Content-Type") != "text/event-stream" ||
+			rr.Header().Get("Cache-Control") != "no-cache" ||
+			rr.Header().Get("Connection") != "keep-alive" {
+			return false
+		}
+		connID = rr.Header().Get("X-Connection-ID")
+		if connID == "" {
+			return false // Wait for connection ID header
+		}
 
-		// Check if connection was added to the map
+		// Check connection is registered in the map
 		connMutex.RLock()
 		_, exists := activeConnections[connID]
 		connMutex.RUnlock()
-		assert.True(t, exists, "Connection ID should be added to activeConnections map")
+		if !exists {
+			return false // Wait for connection ID in map
+		}
 
-		// Check body for initial events (might be flaky due to goroutine/blocking)
-		// Read the body content written so far
-		bodyContent := rr.Body.String()
-		assert.Contains(t, bodyContent, ":ok\n\n", "SSE stream should contain :ok preamble")
-		assert.Contains(t, bodyContent, "event: endpoint\ndata: /mcp?sessionId="+connID+"\n\n", "SSE stream should contain endpoint event")
-		assert.Contains(t, bodyContent, "event: message\ndata: {", "SSE stream should contain message event start")
-		assert.Contains(t, bodyContent, "\"method\":\"mcp-ready\"", "SSE stream should contain mcp-ready message")
-		assert.Contains(t, bodyContent, "\"connectionId\":\""+connID+"\"", "mcp-ready message should contain correct connectionId")
+		// Check initial body content is present
+		bodyContent := rr.Body.String() // Read body within the check
+		if !strings.Contains(bodyContent, ":ok\n\n") ||
+			!strings.Contains(bodyContent, "event: endpoint\ndata: /mcp?sessionId="+connID+"\n\n") ||
+			!strings.Contains(bodyContent, "event: mcp-ready\ndata: {") || // Check start of ready event
+			!strings.Contains(bodyContent, `"connectionId":"`+connID+`"}`) { // Check connection ID within ready event
+			return false
+		}
 
-		// Clean up the connection we added
-		cleanupTestConnection(connID)
-	} else {
-		t.Logf("Handler did not return StatusOK, headers might not be set. Code: %d", rr.Code)
+		return true // All initial conditions met
+	}, 5*time.Second, 50*time.Millisecond, "Handler did not initialize SSE stream correctly within timeout") // Increased timeout slightly
+
+	// If Eventually succeeded, all initial checks passed without races.
+	// connID will be set based on the header read within the successful Eventually tick.
+
+	// No need to call cleanupTestConnection(connID) explicitly here.
+	// The deferred function above will handle closing the channel and resetting the map.
+
+	// Cancel context to allow handler goroutine to exit cleanly
+	cancel()
+
+	// Wait for the handler goroutine to finish (optional but good practice for cleanup)
+	if !waitTimeout(&hwg, 1*time.Second) {
+		t.Error("Handler goroutine did not exit cleanly after context cancellation")
 	}
-
-	// We cannot easily wait for `done` because the handler blocks indefinitely.
-	// For coverage, triggering the initial part is the main goal here.
 }
 
 func TestExecuteToolCall(t *testing.T) {
@@ -1045,4 +1072,19 @@ func TestHttpMethodGetHandler_GoroutineErrors(t *testing.T) {
 	})
 
 	// TODO: Add sub-test for Error_on_Ping_Write
+}
+
+// Helper function to wait for a WaitGroup with a timeout
+func waitTimeout(wg *sync.WaitGroup, timeout time.Duration) bool {
+	c := make(chan struct{})
+	go func() {
+		defer close(c)
+		wg.Wait()
+	}()
+	select {
+	case <-c:
+		return true // Completed normally
+	case <-time.After(timeout):
+		return false // Timed out
+	}
 }

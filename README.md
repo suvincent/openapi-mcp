@@ -9,7 +9,7 @@
 
 **Generate MCP tool definitions directly from a Swagger/OpenAPI specification file.**
 
-OpenAPI-MCP is a library and command-line tool that reads a `swagger.json` or `openapi.yaml` file and generates a corresponding [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) toolset. This allows MCP-compatible clients like [Cursor](https://cursor.sh/) to interact with APIs described by standard OpenAPI specifications.
+OpenAPI-MCP is a dockerized MCP server that reads a `swagger.json` or `openapi.yaml` file and generates a corresponding [Model Context Protocol (MCP)](https://modelcontextprotocol.io/introduction) toolset. This allows MCP-compatible clients like [Cursor](https://cursor.sh/) to interact with APIs described by standard OpenAPI specifications. Now you can enable your AI agent to access any API by simply providing its OpenAPI/Swagger specification - no additional coding required.
 
 ## Table of Contents
 
@@ -22,22 +22,26 @@ OpenAPI-MCP is a library and command-line tool that reads a `swagger.json` or `o
 -   [Command-Line Options](#command-line-options)
     -   [Environment Variables](#environment-variables)
 
+## Demo
+
+Run the demo yourself: [Running the Weatherbit Example (Step-by-Step)](#running-the-weatherbit-example-step-by-step)
+
 ## Why OpenAPI-MCP?
 
 -   **Standard Compliance:** Leverage your existing OpenAPI/Swagger documentation.
 -   **Automatic Tool Generation:** Create MCP tools without manual configuration for each endpoint.
 -   **Flexible API Key Handling:** Securely manage API key authentication for the proxied API without exposing keys to the MCP client.
 -   **Local & Remote Specs:** Works with local specification files or remote URLs.
--   **Command-Line Tool:** Easily integrate MCP generation into build or deployment scripts.
+-   **Dockerized Tool:** Easily deploy and run as a containerized service with Docker.
 
 ## Features
 
 -   **OpenAPI v2 (Swagger) & v3 Support:** Parses standard specification formats.
 -   **Schema Generation:** Creates MCP tool schemas from OpenAPI operation parameters and request/response definitions.
 -   **Secure API Key Management:**
--   Injects API keys into requests (`header`, `query`, `path`, `cookie`) based on command-line configuration.
-    -   Loads API keys directly from flags (`--api-key`), environment variables (`--api-key-env`), or `.env` files located alongside local specs.
-    -   Keeps API keys hidden from the end MCP client (e.g., the AI assistant).
+    -   Injects API keys into requests (`header`, `query`, `path`, `cookie`) based on command-line configuration.
+        -   Loads API keys directly from flags (`--api-key`), environment variables (`--api-key-env`), or `.env` files located alongside local specs.
+        -   Keeps API keys hidden from the end MCP client (e.g., the AI assistant).
 -   **Server URL Detection:** Uses server URLs from the spec as the base for tool interactions (can be overridden).
 -   **Filtering:** Options to include/exclude specific operations or tags (`--include-tag`, `--exclude-tag`, `--include-op`, `--exclude-op`).
 -   **Request Header Injection:** Pass custom headers (e.g., for additional auth, tracing) via the `REQUEST_HEADERS` environment variable.
