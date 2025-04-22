@@ -52,11 +52,11 @@ Run the demo yourself: [Running the Weatherbit Example (Step-by-Step)](#running-
 
 ### Docker
 
-The recommended way to run this tool is via Docker.
+The recommended way to run this tool is via [Docker](https://hub.docker.com/r/ckanthony/openapi-mcp).
 
 #### Using the Pre-built Docker Hub Image (Recommended)
 
-Alternatively, you can use the pre-built image available on Docker Hub.
+Alternatively, you can use the pre-built image available on [Docker Hub](https://hub.docker.com/r/ckanthony/openapi-mcp).
 
 1.  **Pull the Image:**
     ```bash
