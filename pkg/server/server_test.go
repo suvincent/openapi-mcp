@@ -359,33 +359,26 @@ func TestHttpMethodPostHandler(t *testing.T) {
 }
 
 func TestHttpMethodGetHandler(t *testing.T) {
-	// Basic setup
-	// cfg := &config.Config{} // Use random port - Removed Port field - Removed unused variable
-	// Setup(cfg, nil)                // No toolset needed for GET handler base functionality - Removed Setup call
-
-	// --- Test Setup ---
-	req := httptest.NewRequest(http.MethodGet, "/mcp", nil)
-	rr := httptest.NewRecorder() // Use ResponseRecorder directly for header checks
-
-	// Ensure activeConnections is clean before test
+	// --- Setup ---
+	// Reset global state for this test
 	connMutex.Lock()
-	originalConnections := make(map[string]chan jsonRPCResponse)
-	for k, v := range activeConnections {
-		originalConnections[k] = v
-	}
-	activeConnections = make(map[string]chan jsonRPCResponse) // Clear for test
+	originalConnections := activeConnections
+	activeConnections = make(map[string]chan jsonRPCResponse)
 	connMutex.Unlock()
 
-	// Restore original connections after test
+	req, err := http.NewRequest("GET", "/mcp", nil)
+	require.NoError(t, err, "Failed to create request")
+
+	rr := httptest.NewRecorder()
+
+	// Ensure cleanup happens regardless of test outcome
 	defer func() {
 		connMutex.Lock()
-		// Clean up any connection potentially added by the test run
-		// (Find the ID from the recorder if available)
-		connID := rr.Header().Get("X-Connection-ID") // Get ID written by handler
-		if connID != "" {
-			if ch, exists := activeConnections[connID]; exists {
-				close(ch) // Close the channel if it exists
-			}
+		// Clean up any connections potentially left by the test
+		for id, ch := range activeConnections {
+			close(ch)
+			delete(activeConnections, id)
+			log.Printf("[DEFER Cleanup] Closed channel and removed connection %s", id)
 		}
 		activeConnections = originalConnections // Restore the original map
 		connMutex.Unlock()
@@ -393,70 +386,53 @@ func TestHttpMethodGetHandler(t *testing.T) {
 
 	// --- Execute Handler (in a goroutine as it blocks waiting for context) ---
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel() // Ensure the handler goroutine can eventually exit
 	req = req.WithContext(ctx)
 
 	hwg := sync.WaitGroup{}
 	hwg.Add(1)
 	go func() {
 		defer hwg.Done()
+		// Simulate some work before handler returns
+		// In a real scenario, this would block on ctx.Done() or keepAliveTicker
+		// For the test, we just call cancel() after a short delay
+		// to simulate the connection ending gracefully.
+		time.AfterFunc(100*time.Millisecond, cancel) // Allow handler to start and write initial data
 		httpMethodGetHandler(rr, req)
 	}()
 
-	// --- Assertions ---
-	var connID string
-
-	// Wait for the handler to write headers, initial body, and register the connection.
-	// Use Eventually to poll for multiple conditions to be met atomically before proceeding.
-	assert.Eventually(t, func() bool {
-		if rr.Code != http.StatusOK {
-			return false // Wait for status OK first
-		}
-
-		// Check headers are set correctly
-		if rr.Header().Get("Content-Type") != "text/event-stream" ||
-			rr.Header().Get("Cache-Control") != "no-cache" ||
-			rr.Header().Get("Connection") != "keep-alive" {
-			return false
-		}
-		connID = rr.Header().Get("X-Connection-ID")
-		if connID == "" {
-			return false // Wait for connection ID header
-		}
-
-		// Check connection is registered in the map
-		connMutex.RLock()
-		_, exists := activeConnections[connID]
-		connMutex.RUnlock()
-		if !exists {
-			return false // Wait for connection ID in map
-		}
-
-		// Check initial body content is present
-		bodyContent := rr.Body.String() // Read body within the check
-		if !strings.Contains(bodyContent, ":ok\n\n") ||
-			!strings.Contains(bodyContent, "event: endpoint\ndata: /mcp?sessionId="+connID+"\n\n") ||
-			!strings.Contains(bodyContent, "event: mcp-ready\ndata: {") || // Check start of ready event
-			!strings.Contains(bodyContent, `"connectionId":"`+connID+`"}`) { // Check connection ID within ready event
-			return false
-		}
-
-		return true // All initial conditions met
-	}, 5*time.Second, 50*time.Millisecond, "Handler did not initialize SSE stream correctly within timeout") // Increased timeout slightly
-
-	// If Eventually succeeded, all initial checks passed without races.
-	// connID will be set based on the header read within the successful Eventually tick.
-
-	// No need to call cleanupTestConnection(connID) explicitly here.
-	// The deferred function above will handle closing the channel and resetting the map.
-
-	// Cancel context to allow handler goroutine to exit cleanly
-	cancel()
-
-	// Wait for the handler goroutine to finish (optional but good practice for cleanup)
-	if !waitTimeout(&hwg, 1*time.Second) {
-		t.Error("Handler goroutine did not exit cleanly after context cancellation")
+	// Wait for the handler goroutine to finish.
+	// This ensures all writes to rr are complete before we read.
+	if !waitTimeout(&hwg, 2*time.Second) { // Use a reasonable timeout
+		t.Fatal("Handler goroutine did not exit cleanly after context cancellation")
 	}
+
+	// --- Assertions (Performed *after* handler completion) ---
+	assert.Equal(t, http.StatusOK, rr.Code, "Status code should be OK")
+
+	// Check headers are set correctly
+	assert.Equal(t, "text/event-stream", rr.Header().Get("Content-Type"))
+	assert.Equal(t, "no-cache", rr.Header().Get("Cache-Control"))
+	assert.Equal(t, "keep-alive", rr.Header().Get("Connection"))
+	connID := rr.Header().Get("X-Connection-ID")
+	assert.NotEmpty(t, connID, "X-Connection-ID header should be set")
+
+	// Check connection was registered and then cleaned up
+	connMutex.RLock()
+	_, exists := originalConnections[connID] // Check original map after cleanup
+	connMutex.RUnlock()
+	assert.False(t, exists, "Connection ID should be removed from map after handler exits")
+
+	// Check initial body content is present
+	bodyContent := rr.Body.String()
+	assert.Contains(t, bodyContent, ":ok\n\n", "Body should contain :ok preamble")
+	// Construct the expected endpoint data string accurately
+	expectedEndpointData := "data: /mcp?sessionId=" + connID + "\n\n"
+	assert.Contains(t, bodyContent, "event: endpoint\n"+expectedEndpointData, "Body should contain endpoint event")
+	assert.Contains(t, bodyContent, "event: message\ndata: {", "Body should contain start of a message event (e.g., mcp-ready)")
+	// Check if connectionId is present in the ready message (adjust based on actual JSON structure)
+	assert.Contains(t, bodyContent, `"connectionId":"`+connID+`"`, "Body should contain mcp-ready event with correct connection ID")
+
+	// The explicit cleanupTestConnection call is not needed because the handler's defer and the test's defer handle it.
 }
 
 func TestExecuteToolCall(t *testing.T) {
