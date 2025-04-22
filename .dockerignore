@@ -1,0 +1,28 @@
+# Git files
+.git
+.gitignore
+
+# Docker files
+.dockerignore
+Dockerfile
+
+# Documentation
+*.md
+
+# Environment files (except example)
+.env
+*.env
+!.env.example
+
+# Go cache and modules (handled in multi-stage build)
+vendor/
+
+# Local build artifacts
+openapi-mcp
+*.exe
+*.test
+*.out
+
+# OS generated files
+.DS_Store
+*~ 
