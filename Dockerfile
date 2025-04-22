@@ -15,7 +15,7 @@ COPY . .
 # Build the static binary for the command-line tool
 # CGO_ENABLED=0 produces a static binary, important for distroless/scratch images
 # -ldflags="-s -w" strips debug symbols and DWARF info, reducing binary size
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /openapi-mcp ./cmd/openapi-mcp/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o /openapi-mcp cmd/openapi-mcp/main.go
 
 # --- Final Stage ---
 # Use a minimal base image. distroless/static is very small and secure.
