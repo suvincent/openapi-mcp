@@ -435,7 +435,7 @@ func httpMethodPostHandler(w http.ResponseWriter, r *http.Request, toolSet *mcp.
 		case "tools/list":
 			respToSend = handleToolsListJSONRPC(connID, &req, toolSet)
 		case "tools/call":
-			respToSend = handleToolCallJSONRPC(connID, &req, toolSet, cfg)
+			respToSend = handleToolCallJSONRPC(connID, &req, toolSet, cfg, r.Header)
 		default:
 			log.Printf("Received unknown JSON-RPC method '%s' for %s", req.Method, connID)
 			respToSend = createJSONRPCError(reqID, -32601, fmt.Sprintf("Method not found: %s", req.Method), nil)
@@ -519,8 +519,9 @@ func handleToolsListJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Too
 }
 
 // executeToolCall performs the actual HTTP request based on the resolved operation and parameters.
-// It now correctly handles API key injection based on the *cfg* parameter.
-func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.Config) (*http.Response, error) {
+// It now correctly handles API key injection based on the *cfg* parameter and
+// accepts clientHeaders to forward request headers from the MCP client.
+func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.Config, clientHeaders http.Header) (*http.Response, error) {
 	toolName := params.ToolName
 	toolInput := params.Input // This is the map[string]interface{} from the client
 
@@ -554,7 +555,14 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 	path := operation.Path
 	queryParams := url.Values{}
 	pathParams := make(map[string]string)
-	headerParams := make(http.Header)        // For headers to add
+	headerParams := make(http.Header) // For headers to add
+	if clientHeaders != nil {
+		for key, values := range clientHeaders {
+			for _, v := range values {
+				headerParams.Add(key, v)
+			}
+		}
+	}
 	cookieParams := []*http.Cookie{}         // For cookies to add
 	bodyData := make(map[string]interface{}) // For building the request body
 	requestBodyRequired := operation.Method == "POST" || operation.Method == "PUT" || operation.Method == "PATCH"
@@ -754,7 +762,10 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 	return resp, nil
 }
 
-func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.ToolSet, cfg *config.Config) jsonRPCResponse {
+// handleToolCallJSONRPC processes a 'tools/call' JSON-RPC request. It forwards
+// any headers from the originating HTTP request via the clientHeaders argument
+// so they can be applied to the outgoing API request.
+func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.ToolSet, cfg *config.Config, clientHeaders http.Header) jsonRPCResponse {
 	// req.Params is interface{}, but should contain json.RawMessage for tools/call
 	rawParams, ok := req.Params.(json.RawMessage)
 	if !ok {
@@ -786,7 +797,7 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 	log.Printf("Executing tool '%s' for %s with input: %+v", params.ToolName, connID, params.Input)
 
 	// --- Execute the actual tool call ---
-	httpResp, execErr := executeToolCall(&params, toolSet, cfg)
+	httpResp, execErr := executeToolCall(&params, toolSet, cfg, clientHeaders)
 
 	// --- Process Response ---
 	var resultPayload ToolResultPayload
