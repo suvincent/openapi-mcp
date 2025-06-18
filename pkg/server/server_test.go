@@ -665,7 +665,7 @@ func TestExecuteToolCall(t *testing.T) {
 			}
 
 			// --- Execute Function ---
-			httpResp, err := executeToolCall(&tc.params, toolSet, &testCfg) // Use the potentially modified testCfg
+			httpResp, err := executeToolCall(&tc.params, toolSet, &testCfg, nil) // Use the potentially modified testCfg
 
 			// --- Assertions ---
 			if tc.expectError {
