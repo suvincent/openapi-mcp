@@ -187,13 +187,13 @@ func TestHttpMethodPostHandler(t *testing.T) {
 			expectedSyncStatus: http.StatusAccepted,
 			expectedSyncBody:   "Request accepted, response will be sent via SSE.\n",
 			checkAsyncResponse: func(t *testing.T, resp jsonRPCResponse) {
-				assert.Equal(t, "call-post-err-1", resp.ID)
-				assert.Nil(t, resp.Error)
-				resultPayload, ok := resp.Result.(ToolResultPayload)
-				require.True(t, ok)
-				assert.True(t, resultPayload.IsError)
-				require.NotNil(t, resultPayload.Error)
-				assert.Contains(t, resultPayload.Error.Message, "operation details for tool 'nonexistent_tool' not found")
+                               assert.Equal(t, "call-post-err-1", resp.ID)
+                               assert.Nil(t, resp.Error)
+                               resultPayload, ok := resp.Result.(ToolResultPayload)
+                               require.True(t, ok)
+                               assert.True(t, resultPayload.IsError)
+                               require.NotNil(t, resultPayload.Error)
+                               assert.Contains(t, resultPayload.Error.Message, "operation details for tool 'nonexistent_tool' not found")
 			},
 		},
 		{
