@@ -18,7 +18,7 @@ jobs:
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
-          username: mark19891107
+          username: ryanpeng1111
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up Docker Buildx
@@ -28,7 +28,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: mark19891107/openapi-mcp
+          images: ryanpeng1111/openapi-mcp
           # Add git tag as Docker tag
           tags: |
             type=semver,pattern={{version}}
