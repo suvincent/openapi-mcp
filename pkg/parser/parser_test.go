@@ -396,6 +396,62 @@ const fileV2SpecJSON = `{
   }
 }`
 
+// V3 spec with response schema
+const responseSchemaV3SpecJSON = `{
+  "openapi": "3.0.0",
+  "info": {"title": "Response V3 API", "version": "1.0"},
+  "paths": {
+    "/file/{id}": {
+      "get": {
+        "operationId": "getFile",
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {"path": {"type": "string"}},
+                  "required": ["path"]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`
+
+const responseSchemaV2SpecJSON = `{
+  "swagger": "2.0",
+  "info": {"title": "Response V2 API", "version": "1.0"},
+  "paths": {
+    "/file/{id}": {
+      "get": {
+        "operationId": "getFileV2",
+        "produces": ["application/json"],
+        "parameters": [
+          {"name": "id", "in": "path", "required": true, "type": "string"}
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "schema": {
+              "type": "object",
+              "properties": {"path": {"type": "string"}},
+              "required": ["path"]
+            }
+          }
+        }
+      }
+    }
+  }
+}`
+
 func TestLoadSwagger(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -653,6 +709,26 @@ func TestGenerateToolSet(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, VersionV2, versionFileV2)
 	specFileV2 := docFileV2.(*spec.Swagger)
+
+	// Load Response Schema V3 spec
+	tempDirRespV3 := t.TempDir()
+	filePathRespV3 := filepath.Join(tempDirRespV3, "resp_v3.json")
+	err = os.WriteFile(filePathRespV3, []byte(responseSchemaV3SpecJSON), 0644)
+	require.NoError(t, err)
+	docRespV3, versionRespV3, err := LoadSwagger(filePathRespV3)
+	require.NoError(t, err)
+	require.Equal(t, VersionV3, versionRespV3)
+	specRespV3 := docRespV3.(*openapi3.T)
+
+	// Load Response Schema V2 spec
+	tempDirRespV2 := t.TempDir()
+	filePathRespV2 := filepath.Join(tempDirRespV2, "resp_v2.json")
+	err = os.WriteFile(filePathRespV2, []byte(responseSchemaV2SpecJSON), 0644)
+	require.NoError(t, err)
+	docRespV2, versionRespV2, err := LoadSwagger(filePathRespV2)
+	require.NoError(t, err)
+	require.Equal(t, VersionV2, versionRespV2)
+	specRespV2 := docRespV2.(*spec.Swagger)
 
 	// --- Test Cases ---
 	tests := []struct {
@@ -1010,6 +1086,46 @@ func TestGenerateToolSet(t *testing.T) {
 							{Name: "file_upload", In: "formData"},
 						},
 					},
+				},
+			},
+		},
+		{
+			name:        "V3 Response Schema",
+			spec:        specRespV3,
+			version:     VersionV3,
+			cfg:         &config.Config{},
+			expectError: false,
+			expectedToolSet: &mcp.ToolSet{
+				Name: "Response V3 API", Description: "",
+				Tools: []mcp.Tool{
+					{
+						Name:         "getFile",
+						InputSchema:  mcp.Schema{Type: "object", Properties: map[string]mcp.Schema{"id": {Type: "string"}}, Required: []string{"id"}},
+						OutputSchema: mcp.Schema{Type: "object", Properties: map[string]mcp.Schema{"path": {Type: "string"}}, Required: []string{"path"}},
+					},
+				},
+				Operations: map[string]mcp.OperationDetail{
+					"getFile": {Method: "GET", Path: "/file/{id}", BaseURL: "", Parameters: []mcp.ParameterDetail{{Name: "id", In: "path"}}},
+				},
+			},
+		},
+		{
+			name:        "V2 Response Schema",
+			spec:        specRespV2,
+			version:     VersionV2,
+			cfg:         &config.Config{},
+			expectError: false,
+			expectedToolSet: &mcp.ToolSet{
+				Name: "Response V2 API", Description: "",
+				Tools: []mcp.Tool{
+					{
+						Name:         "getFileV2",
+						InputSchema:  mcp.Schema{Type: "object", Properties: map[string]mcp.Schema{"id": {Type: "string"}}, Required: []string{"id"}},
+						OutputSchema: mcp.Schema{Type: "object", Properties: map[string]mcp.Schema{"path": {Type: "string"}}, Required: []string{"path"}},
+					},
+				},
+				Operations: map[string]mcp.OperationDetail{
+					"getFileV2": {Method: "GET", Path: "/file/{id}", BaseURL: "", Parameters: []mcp.ParameterDetail{{Name: "id", In: "path"}}},
 				},
 			},
 		},
