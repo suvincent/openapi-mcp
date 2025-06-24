@@ -49,9 +49,10 @@ func (ts *ToolSet) GetAPIKeyDetails() (name, in string) {
 
 // Tool represents a single function or capability exposed via MCP.
 type Tool struct {
-	Name        string `json:"name"` // Corresponds to OpenAPI operationId or generated name
-	Description string `json:"description,omitempty"`
-	InputSchema Schema `json:"inputSchema"` // Renamed from Parameters, consolidate parameters/body here
+	Name         string `json:"name"` // Corresponds to OpenAPI operationId or generated name
+	Description  string `json:"description,omitempty"`
+	InputSchema  Schema `json:"inputSchema"` // Renamed from Parameters, consolidate parameters/body here
+	OutputSchema Schema `json:"outputSchema,omitempty"`
 	// Entrypoint  string      `json:"entrypoint"`             // Removed for simplicity, schema should contain enough info?
 	// RequestBody RequestBody `json:"request_body,omitempty"` // Removed, info should be part of InputSchema
 	// HTTPMethod  string      `json:"http_method"`            // Removed for simplicity

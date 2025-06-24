@@ -38,6 +38,13 @@ func createTestToolSetForCall() *mcp.ToolSet {
 					},
 					Required: []string{"user_id"},
 				},
+				OutputSchema: mcp.Schema{
+					Type: "object",
+					Properties: map[string]mcp.Schema{
+						"id": {Type: "string"},
+					},
+					Required: []string{"id"},
+				},
 			},
 			{
 				Name:        "post_data",
@@ -48,6 +55,12 @@ func createTestToolSetForCall() *mcp.ToolSet {
 						"data": {Type: "string"},
 					},
 					Required: []string{"data"},
+				},
+				OutputSchema: mcp.Schema{
+					Type: "object",
+					Properties: map[string]mcp.Schema{
+						"status": {Type: "string"},
+					},
 				},
 			},
 		},
@@ -166,10 +179,14 @@ func TestHttpMethodPostHandler(t *testing.T) {
 				resultPayload, ok := resp.Result.(ToolResultPayload)
 				require.True(t, ok)
 				assert.False(t, resultPayload.IsError)
-				require.Len(t, resultPayload.Content, 1)
+				require.Len(t, resultPayload.Content, 2)
+				assert.Equal(t, "json", resultPayload.Content[0].Type)
 				assert.JSONEq(t, `{"id":"postUser"}`, resultPayload.Content[0].Text)
+				assert.Equal(t, "text", resultPayload.Content[1].Type)
+				assert.Equal(t, "{\"id\":\"postUser\"}\n", resultPayload.Content[1].Text)
 			},
 			mockBackend: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				fmt.Fprintln(w, `{"id":"postUser"}`)
 			},

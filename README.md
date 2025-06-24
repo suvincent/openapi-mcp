@@ -40,6 +40,7 @@ Run the demo yourself: [Running the Weatherbit Example (Step-by-Step)](#running-
 
 -   **OpenAPI v2 (Swagger) & v3 Support:** Parses standard specification formats.
 -   **Schema Generation:** Creates MCP tool schemas from OpenAPI operation parameters and request/response definitions.
+-   **Response Schema Parsing:** Output schemas are inferred from successful responses allowing JSON results to be returned in structured form.
 -   **Secure API Key Management:**
     -   Injects API keys into requests (`header`, `query`, `path`, `cookie`) based on command-line configuration.
         -   Loads API keys directly from flags (`--api-key`), environment variables (`--api-key-env`), or `.env` files located alongside local specs.
@@ -47,6 +48,8 @@ Run the demo yourself: [Running the Weatherbit Example (Step-by-Step)](#running-
 -   **Server URL Detection:** Uses server URLs from the spec as the base for tool interactions (can be overridden).
 -   **Filtering:** Options to include/exclude specific operations or tags (`--include-tag`, `--exclude-tag`, `--include-op`, `--exclude-op`).
 -   **Request Header Injection:** Pass custom headers (e.g., for additional auth, tracing) via the `REQUEST_HEADERS` environment variable.
+
+When a tool returns a JSON object containing a `path` field, combine it with the server base URL to form a full download link. For example, if the response is `{ "path": "/files/123" }` and the API base URL is `https://api.example.com`, an LLM can download using `https://api.example.com/files/123`.
 
 ## Installation
 

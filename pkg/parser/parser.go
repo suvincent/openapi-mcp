@@ -225,10 +225,18 @@ func generateToolSetV3(doc *openapi3.T, cfg *config.Config) (*mcp.ToolSet, error
 				}
 			}
 
+			var outputSchema mcp.Schema
+			if respSchemaRef := findResponseSchemaV3(op); respSchemaRef != nil {
+				if os, err := openapiSchemaToMCPSchemaV3(respSchemaRef); err == nil {
+					outputSchema = os
+				}
+			}
+
 			tool := mcp.Tool{
-				Name:        toolName,
-				Description: toolDesc,
-				InputSchema: parametersSchema, // Use InputSchema, assuming it contains combined params/body
+				Name:         toolName,
+				Description:  toolDesc,
+				InputSchema:  parametersSchema, // Use InputSchema, assuming it contains combined params/body
+				OutputSchema: outputSchema,
 			}
 			toolSet.Tools = append(toolSet.Tools, tool)
 
@@ -430,6 +438,36 @@ func openapiSchemaToMCPSchemaV3(oapiSchemaRef *openapi3.SchemaRef) (mcp.Schema, 
 	return mcpSchema, nil
 }
 
+func findResponseSchemaV3(op *openapi3.Operation) *openapi3.SchemaRef {
+	if op == nil || op.Responses == nil {
+		return nil
+	}
+	for code := 200; code <= 299; code++ {
+		key := fmt.Sprintf("%d", code)
+		if respRef := op.Responses.Value(key); respRef != nil && respRef.Value != nil {
+			if mt, ok := respRef.Value.Content["application/json"]; ok && mt.Schema != nil {
+				return mt.Schema
+			}
+			for _, mt := range respRef.Value.Content {
+				if mt.Schema != nil {
+					return mt.Schema
+				}
+			}
+		}
+	}
+	if respRef := op.Responses.Value("default"); respRef != nil && respRef.Value != nil {
+		if mt, ok := respRef.Value.Content["application/json"]; ok && mt.Schema != nil {
+			return mt.Schema
+		}
+		for _, mt := range respRef.Value.Content {
+			if mt.Schema != nil {
+				return mt.Schema
+			}
+		}
+	}
+	return nil
+}
+
 // --- V2 Specific Implementation ---
 
 func generateToolSetV2(doc *spec.Swagger, cfg *config.Config) (*mcp.ToolSet, error) {
@@ -524,10 +562,18 @@ func generateToolSetV2(doc *spec.Swagger, cfg *config.Config) (*mcp.ToolSet, err
 				}
 			}
 
+			var outputSchema mcp.Schema
+			if respSchema := findResponseSchemaV2(op); respSchema != nil {
+				if os, err := swaggerSchemaToMCPSchemaV2(respSchema, doc.Definitions); err == nil {
+					outputSchema = os
+				}
+			}
+
 			tool := mcp.Tool{
-				Name:        toolName,
-				Description: toolDesc,
-				InputSchema: parametersSchema, // Use InputSchema, assuming it contains combined params/body
+				Name:         toolName,
+				Description:  toolDesc,
+				InputSchema:  parametersSchema,
+				OutputSchema: outputSchema,
 			}
 			toolSet.Tools = append(toolSet.Tools, tool)
 
@@ -844,6 +890,23 @@ func swaggerSchemaToMCPSchemaV2(oapiSchema *spec.Schema, definitions spec.Defini
 		}
 	}
 	return mcpSchema, nil
+}
+
+func findResponseSchemaV2(op *spec.Operation) *spec.Schema {
+	if op == nil {
+		return nil
+	}
+	for code := 200; code <= 299; code++ {
+		if resp, ok := op.Responses.StatusCodeResponses[code]; ok {
+			if resp.Schema != nil {
+				return resp.Schema
+			}
+		}
+	}
+	if op.Responses.Default != nil && op.Responses.Default.Schema != nil {
+		return op.Responses.Default.Schema
+	}
+	return nil
 }
 
 func resolveRefV2(ref spec.Ref, definitions spec.Definitions) (*spec.Schema, error) {
