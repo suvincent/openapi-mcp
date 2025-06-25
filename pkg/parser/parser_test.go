@@ -452,6 +452,41 @@ const responseSchemaV2SpecJSON = `{
   }
 }`
 
+// V3 spec with response schema using $ref
+const refResponseV3SpecJSON = `{
+  "openapi": "3.0.0",
+  "info": {"title": "Ref Response V3 API", "version": "1.0"},
+  "components": {
+    "schemas": {
+      "Item": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"}
+        },
+        "required": ["id"]
+      }
+    }
+  },
+  "paths": {
+    "/item": {
+      "get": {
+        "operationId": "getItem",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/Item"}
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}`
+
 func TestLoadSwagger(t *testing.T) {
 	tests := []struct {
 		name          string
@@ -719,6 +754,16 @@ func TestGenerateToolSet(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, VersionV3, versionRespV3)
 	specRespV3 := docRespV3.(*openapi3.T)
+
+	// Load Ref Response V3 spec
+	tempDirRefRespV3 := t.TempDir()
+	filePathRefRespV3 := filepath.Join(tempDirRefRespV3, "ref_resp_v3.json")
+	err = os.WriteFile(filePathRefRespV3, []byte(refResponseV3SpecJSON), 0644)
+	require.NoError(t, err)
+	docRefRespV3, versionRefRespV3, err := LoadSwagger(filePathRefRespV3)
+	require.NoError(t, err)
+	require.Equal(t, VersionV3, versionRefRespV3)
+	specRefRespV3 := docRefRespV3.(*openapi3.T)
 
 	// Load Response Schema V2 spec
 	tempDirRespV2 := t.TempDir()
@@ -1106,6 +1151,26 @@ func TestGenerateToolSet(t *testing.T) {
 				},
 				Operations: map[string]mcp.OperationDetail{
 					"getFile": {Method: "GET", Path: "/file/{id}", BaseURL: "", Parameters: []mcp.ParameterDetail{{Name: "id", In: "path"}}},
+				},
+			},
+		},
+		{
+			name:        "V3 Response Schema Ref",
+			spec:        specRefRespV3,
+			version:     VersionV3,
+			cfg:         &config.Config{},
+			expectError: false,
+			expectedToolSet: &mcp.ToolSet{
+				Name: "Ref Response V3 API", Description: "",
+				Tools: []mcp.Tool{
+					{
+						Name:         "getItem",
+						InputSchema:  mcp.Schema{Type: "object", Properties: map[string]mcp.Schema{}, Required: []string{}},
+						OutputSchema: mcp.Schema{Type: "object", Properties: map[string]mcp.Schema{"id": {Type: "string"}, "name": {Type: "string"}}, Required: []string{"id"}},
+					},
+				},
+				Operations: map[string]mcp.OperationDetail{
+					"getItem": {Method: "GET", Path: "/item", BaseURL: "", Parameters: []mcp.ParameterDetail{}},
 				},
 			},
 		},

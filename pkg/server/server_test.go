@@ -179,11 +179,9 @@ func TestHttpMethodPostHandler(t *testing.T) {
 				resultPayload, ok := resp.Result.(ToolResultPayload)
 				require.True(t, ok)
 				assert.False(t, resultPayload.IsError)
-				require.Len(t, resultPayload.Content, 2)
-				assert.Equal(t, "json", resultPayload.Content[0].Type)
-				assert.JSONEq(t, `{"id":"postUser"}`, resultPayload.Content[0].Text)
-				assert.Equal(t, "text", resultPayload.Content[1].Type)
-				assert.Equal(t, "{\"id\":\"postUser\"}\n", resultPayload.Content[1].Text)
+				require.Len(t, resultPayload.Content, 1)
+				assert.Equal(t, "text", resultPayload.Content[0].Type)
+				assert.Equal(t, "{\"id\":\"postUser\"}\n", resultPayload.Content[0].Text)
 			},
 			mockBackend: func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")

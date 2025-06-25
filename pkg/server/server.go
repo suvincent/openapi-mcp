@@ -815,13 +815,6 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 		}
 	} else {
 		defer httpResp.Body.Close() // Ensure body is closed
-		var outputSchema *mcp.Schema
-		for i := range toolSet.Tools {
-			if toolSet.Tools[i].Name == params.ToolName {
-				outputSchema = &toolSet.Tools[i].OutputSchema
-				break
-			}
-		}
 		bodyBytes, readErr := io.ReadAll(httpResp.Body)
 		if readErr != nil {
 			log.Printf("Error reading response body for tool '%s': %v", params.ToolName, readErr)
@@ -848,19 +841,7 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 				}
 			} else {
 				// Successful execution
-				ct := httpResp.Header.Get("Content-Type")
-
-				var resultContent []ToolResultContent
-				if strings.HasPrefix(strings.ToLower(ct), "application/json") && outputSchema != nil {
-					// Attempt to parse JSON body using OutputSchema if available
-					var parsed interface{}
-					if err := json.Unmarshal(bodyBytes, &parsed); err == nil {
-						canonical, _ := json.Marshal(parsed)
-						resultContent = append(resultContent, ToolResultContent{Type: "json", Text: string(canonical)})
-					}
-				}
-				// Always include original text for backward compatibility
-				resultContent = append(resultContent, ToolResultContent{Type: "text", Text: string(bodyBytes)})
+				resultContent := []ToolResultContent{{Type: "text", Text: string(bodyBytes)}}
 
 				resultPayload = ToolResultPayload{
 					Content:    resultContent,
