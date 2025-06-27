@@ -272,7 +272,7 @@ func writeSSEEvent(w http.ResponseWriter, eventName string, data interface{}) er
 	if strData, ok := data.(string); ok && eventName == "endpoint" { // Special case for endpoint URL
 		dataStr = strData
 	} else {
-		jsonData, err := json.Marshal(data)
+		jsonData, err := json.MarshalIndent(data, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal data for SSE event '%s': %w", eventName, err)
 		}
@@ -433,9 +433,17 @@ func httpMethodPostHandler(w http.ResponseWriter, r *http.Request, toolSet *mcp.
 			fmt.Fprintln(w, "Notification received.")
 			return // Return early, do not send anything on SSE channel
 		case "tools/list":
+			incomingListJSON, _ := json.MarshalIndent(req, "", "  ")
+			log.Printf("DEBUG: Handling 'tools/list' for %s. Incoming request: %s", connID, string(incomingListJSON))
 			respToSend = handleToolsListJSONRPC(connID, &req, toolSet)
+			outgoingListJSON, _ := json.MarshalIndent(respToSend, "", "  ")
+			log.Printf("DEBUG: Prepared 'tools/list' response for %s. Outgoing response: %s", connID, string(outgoingListJSON))
 		case "tools/call":
+			incomingCallJSON, _ := json.MarshalIndent(req, "", "  ")
+			log.Printf("DEBUG: Handling 'tools/call' for %s. Incoming request: %s", connID, string(incomingCallJSON))
 			respToSend = handleToolCallJSONRPC(connID, &req, toolSet, cfg, r.Header, r.Cookies())
+			outgoingCallJSON, _ := json.MarshalIndent(respToSend, "", "  ")
+			log.Printf("DEBUG: Prepared 'tools/call' response for %s. Outgoing response: %s", connID, string(outgoingCallJSON))
 		default:
 			log.Printf("Received unknown JSON-RPC method '%s' for %s", req.Method, connID)
 			respToSend = createJSONRPCError(reqID, -32601, fmt.Sprintf("Method not found: %s", req.Method), nil)

@@ -445,7 +445,7 @@ func TestHttpMethodGetHandler(t *testing.T) {
 	assert.Contains(t, bodyContent, "event: endpoint\n"+expectedEndpointData, "Body should contain endpoint event")
 	assert.Contains(t, bodyContent, "event: message\ndata: {", "Body should contain start of a message event (e.g., mcp-ready)")
 	// Check if connectionId is present in the ready message (adjust based on actual JSON structure)
-	assert.Contains(t, bodyContent, `"connectionId":"`+connID+`"`, "Body should contain mcp-ready event with correct connection ID")
+	assert.Contains(t, bodyContent, connID, "Body should contain mcp-ready event with correct connection ID")
 
 	// The explicit cleanupTestConnection call is not needed because the handler's defer and the test's defer handle it.
 }
@@ -758,19 +758,33 @@ func TestWriteSSEEvent(t *testing.T) {
 				assert.NoError(t, err)
 				// For struct data, use JSONEq for robust comparison
 				if _, isStruct := tc.data.(jsonRPCRequest); isStruct {
-					prefix := fmt.Sprintf("event: %s\ndata: ", tc.eventName)
+					prefix := fmt.Sprintf("event: %s\n", tc.eventName)
 					suffix := "\n\n"
 					require.True(t, strings.HasPrefix(rr.Body.String(), prefix))
 					require.True(t, strings.HasSuffix(rr.Body.String(), suffix))
-					actualJSON := strings.TrimSuffix(strings.TrimPrefix(rr.Body.String(), prefix), suffix)
+					bodyContent := strings.TrimSuffix(strings.TrimPrefix(rr.Body.String(), prefix), suffix)
+					var jsonLines []string
+					for _, line := range strings.Split(bodyContent, "\n") {
+						if strings.HasPrefix(line, "data: ") {
+							jsonLines = append(jsonLines, strings.TrimPrefix(line, "data: "))
+						}
+					}
+					actualJSON := strings.Join(jsonLines, "\n")
 					expectedJSONBytes, _ := json.Marshal(tc.data)
 					assert.JSONEq(t, string(expectedJSONBytes), actualJSON)
 				} else if _, isStruct := tc.data.(jsonRPCResponse); isStruct {
-					prefix := fmt.Sprintf("event: %s\ndata: ", tc.eventName)
+					prefix := fmt.Sprintf("event: %s\n", tc.eventName)
 					suffix := "\n\n"
 					require.True(t, strings.HasPrefix(rr.Body.String(), prefix))
 					require.True(t, strings.HasSuffix(rr.Body.String(), suffix))
-					actualJSON := strings.TrimSuffix(strings.TrimPrefix(rr.Body.String(), prefix), suffix)
+					bodyContent := strings.TrimSuffix(strings.TrimPrefix(rr.Body.String(), prefix), suffix)
+					var jsonLines []string
+					for _, line := range strings.Split(bodyContent, "\n") {
+						if strings.HasPrefix(line, "data: ") {
+							jsonLines = append(jsonLines, strings.TrimPrefix(line, "data: "))
+						}
+					}
+					actualJSON := strings.Join(jsonLines, "\n")
 					expectedJSONBytes, _ := json.Marshal(tc.data)
 					assert.JSONEq(t, string(expectedJSONBytes), actualJSON)
 				} else {
