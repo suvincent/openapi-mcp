@@ -1,4 +1,5 @@
 # OpenAPI-MCP: Dockerized MCP Server to allow your AI agent to access any API with existing api docs
+**feature that forward request headers in tool calls is from https://github.com/mark19891107/openapi-mcp**
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/ckanthony/openapi-mcp.svg)](https://pkg.go.dev/github.com/ckanthony/openapi-mcp)
 [![CI](https://github.com/ckanthony/openapi-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ckanthony/openapi-mcp/actions/workflows/ci.yml)
@@ -206,6 +207,8 @@ The `openapi-mcp` command accepts the following flags:
 | `--base-url`         | Manually override the target API server base URL detected from the spec.                                              | `string`      | (none)                           |
 | `--name`             | Default name for the generated MCP toolset (used if spec has no title).                                             | `string`      | "OpenAPI-MCP Tools"            |
 | `--desc`             | Default description for the generated MCP toolset (used if spec has no description).                                | `string`      | "Tools generated from OpenAPI spec" |
+| `--set-body`         | Key-value pairs to set in the request body (e.g., `user.name=ooxx`). Can be repeated.                               | `string slice`| (none)                           |
+| `--set-header-to-body` | Map header values from the client request to request body fields (e.g., `user.idToken=headers.X-Auth-Token`). Can be repeated. | `string slice`| (none)                           |
 
 **Note:** You can get this list by running the tool with the `--help` flag (e.g., `docker run --rm ckanthony/openapi-mcp:latest --help`).
 
