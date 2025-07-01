@@ -47,6 +47,8 @@ func main() {
     flag.Var(&excludeOps, "exclude-op", "Operation ID to exclude (can be repeated)")
     var setBody stringSliceFlag
     flag.Var(&setBody, "set-body", "Key-value pair to set in the request body (e.g., 'user.name=ooxx')")
+    var setHeaderToBody stringSliceFlag
+    flag.Var(&setHeaderToBody, "set-header-to-body", "Map header values to request body fields (e.g., 'user.idToken=headers.X-Auth-Token')")
 
     serverBaseURL := flag.String("base-url", "", "Manually override the server base URL")
     defaultToolName := flag.String("name", "OpenAPI-MCP Tools", "Default name for the toolset")
@@ -121,6 +123,7 @@ func main() {
 		DefaultToolDesc:   *defaultToolDesc,
 		CustomHeaders:     customHeadersEnv,
 		SetBody:           setBody,
+		SetHeaderToBody:   setHeaderToBody,
 	}
 
 	log.Printf("Configuration loaded: %+v\n", cfg)
