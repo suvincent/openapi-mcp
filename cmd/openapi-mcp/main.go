@@ -44,10 +44,12 @@ func main() {
 	var includeOps stringSliceFlag
 	flag.Var(&includeOps, "include-op", "Operation ID to include (can be repeated)")
 	var excludeOps stringSliceFlag
-	flag.Var(&excludeOps, "exclude-op", "Operation ID to exclude (can be repeated)")
+    flag.Var(&excludeOps, "exclude-op", "Operation ID to exclude (can be repeated)")
+    var setBody stringSliceFlag
+    flag.Var(&setBody, "set-body", "Key-value pair to set in the request body (e.g., 'user.name=ooxx')")
 
-	serverBaseURL := flag.String("base-url", "", "Manually override the server base URL")
-	defaultToolName := flag.String("name", "OpenAPI-MCP Tools", "Default name for the toolset")
+    serverBaseURL := flag.String("base-url", "", "Manually override the server base URL")
+    defaultToolName := flag.String("name", "OpenAPI-MCP Tools", "Default name for the toolset")
 	defaultToolDesc := flag.String("desc", "Tools generated from OpenAPI spec", "Default description for the toolset")
 
 	// Parse flags *after* defining them all
@@ -118,6 +120,7 @@ func main() {
 		DefaultToolName:   *defaultToolName,
 		DefaultToolDesc:   *defaultToolDesc,
 		CustomHeaders:     customHeadersEnv,
+		SetBody:           setBody,
 	}
 
 	log.Printf("Configuration loaded: %+v\n", cfg)

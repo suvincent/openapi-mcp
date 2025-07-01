@@ -700,6 +700,14 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 	var reqBody io.Reader
 	var bodyBytes []byte // Keep for logging
 	if requestBodyRequired && len(bodyData) > 0 {
+		// Inject custom body values
+		for _, kv := range cfg.SetBody {
+			parts := strings.SplitN(kv, "=", 2)
+			if len(parts) == 2 {
+				setNestedValue(bodyData, parts[0], parts[1])
+			}
+		}
+
 		var err error
 		bodyBytes, err = json.Marshal(bodyData)
 		if err != nil {
@@ -926,4 +934,19 @@ func tryWriteHTTPError(w http.ResponseWriter, code int, message string) {
 		log.Printf("Error writing plain HTTP error response: %v", err)
 	}
 	log.Printf("Sent plain HTTP error: %s (Code: %d)", message, code)
+}
+
+// setNestedValue sets a value in a nested map based on a dot-separated key.
+func setNestedValue(data map[string]interface{}, key string, value string) {
+	parts := strings.Split(key, ".")
+	for i, part := range parts {
+		if i == len(parts)-1 {
+			data[part] = value
+		} else {
+			if _, ok := data[part]; !ok {
+				data[part] = make(map[string]interface{})
+			}
+			data = data[part].(map[string]interface{})
+		}
+	}
 }

@@ -628,6 +628,32 @@ func TestExecuteToolCall(t *testing.T) {
 				assert.Equal(t, "/path2", r.URL.Path)
 			},
 		},
+		// --- Set Nested Body Value from Config ---
+		{
+			name: "POST with nested body value from config",
+			params: ToolCallParams{
+				ToolName: "update_user",
+				Input: map[string]interface{}{
+					"id": 123,
+				},
+			},
+			opDetail: mcp.OperationDetail{
+				Method: "POST",
+				Path:   "/update_user",
+			},
+			cfg: &config.Config{
+				SetBody: []string{"user.name=ooxx", "user.details.age=30"},
+			},
+			expectError:       false,
+			backendStatusCode: http.StatusOK,
+			backendResponse:   `{"status":"updated"}`,
+			requestAsserter: func(t *testing.T, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/update_user", r.URL.Path)
+				bodyBytes, _ := io.ReadAll(r.Body)
+				assert.JSONEq(t, `{"id":123,"user":{"name":"ooxx","details":{"age":"30"}}}`, string(bodyBytes))
+			},
+		},
 		// --- Error Case (Tool Not Found in ToolSet) ---
 		{
 			name: "Error - Tool Not Found",
