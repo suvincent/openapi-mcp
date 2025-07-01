@@ -39,7 +39,8 @@ type Config struct {
 
 	// Server-side request modification
 	CustomHeaders string   // Comma-separated list of headers (e.g., "Header1:Value1,Header2:Value2") to add to outgoing requests.
-	SetBody       []string // Key-value pairs to set in the request body (e.g., "user.name=ooxx")
+	SetBody          []string // Key-value pairs to set in the request body (e.g., "user.name=ooxx")
+	SetHeaderToBody  []string // Map header values to request body fields (e.g., "user.idToken=headers.X-Auth-Token")
 }
 
 // GetAPIKey resolves the API key value, prioritizing the environment variable over the direct flag.

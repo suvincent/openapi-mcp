@@ -654,6 +654,32 @@ func TestExecuteToolCall(t *testing.T) {
 				assert.JSONEq(t, `{"id":123,"user":{"name":"ooxx","details":{"age":"30"}}}`, string(bodyBytes))
 			},
 		},
+		// --- Set Header to Body from Config ---
+		{
+			name: "POST with header value injected into body",
+			params: ToolCallParams{
+				ToolName: "update_profile",
+				Input: map[string]interface{}{
+					"profile_id": "p123",
+				},
+			},
+			opDetail: mcp.OperationDetail{
+				Method: "POST",
+				Path:   "/profile",
+			},
+			cfg: &config.Config{
+				SetHeaderToBody: []string{"user.idToken=headers.X-Auth-Token"},
+			},
+			expectError:       false,
+			backendStatusCode: http.StatusOK,
+			backendResponse:   `{"status":"profile_updated"}`,
+			requestAsserter: func(t *testing.T, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/profile", r.URL.Path)
+				bodyBytes, _ := io.ReadAll(r.Body)
+				assert.JSONEq(t, `{"profile_id":"p123","user":{"idToken":"test-auth-token"}}`, string(bodyBytes))
+			},
+		},
 		// --- Error Case (Tool Not Found in ToolSet) ---
 		{
 			name: "Error - Tool Not Found",
@@ -705,8 +731,15 @@ func TestExecuteToolCall(t *testing.T) {
 				toolSet.Operations[tc.params.ToolName] = tc.opDetail
 			}
 
+			// For the "POST with header value injected into body" test case, set the clientHeaders
+			var clientHeaders http.Header
+			if tc.name == "POST with header value injected into body" {
+				clientHeaders = make(http.Header)
+				clientHeaders.Set("X-Auth-Token", "test-auth-token")
+			}
+
 			// --- Execute Function ---
-			httpResp, err := executeToolCall(&tc.params, toolSet, &testCfg, nil, nil) // Use the potentially modified testCfg
+			httpResp, err := executeToolCall(&tc.params, toolSet, &testCfg, clientHeaders, nil) // Use the potentially modified testCfg
 
 			// --- Assertions ---
 			if tc.expectError {

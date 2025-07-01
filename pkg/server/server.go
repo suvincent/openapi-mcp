@@ -699,8 +699,33 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 	// --- Prepare Request Body ---
 	var reqBody io.Reader
 	var bodyBytes []byte // Keep for logging
+
+	// Process SetHeaderToBody config
+	for _, mapping := range cfg.SetHeaderToBody {
+		parts := strings.SplitN(mapping, "=", 2)
+		if len(parts) == 2 {
+			bodyPath := parts[0]
+			headerSource := parts[1]
+
+			if strings.HasPrefix(headerSource, "headers.") {
+				headerName := strings.TrimPrefix(headerSource, "headers.")
+				headerValue := clientHeaders.Get(headerName)
+				if headerValue != "" {
+					setNestedValue(bodyData, bodyPath, headerValue)
+					log.Printf("[ExecuteToolCall] Injected header '%s' into body path '%s'", headerName, bodyPath)
+				} else {
+					log.Printf("[ExecuteToolCall] Header '%s' not found in client request, skipping injection to body path '%s'", headerName, bodyPath)
+				}
+			} else {
+				log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected 'body.path=headers.Header-Name'", mapping)
+			}
+		} else {
+			log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected 'body.path=headers.Header-Name'", mapping)
+		}
+	}
+
 	if requestBodyRequired && len(bodyData) > 0 {
-		// Inject custom body values
+		// Inject custom body values from SetBody config
 		for _, kv := range cfg.SetBody {
 			parts := strings.SplitN(kv, "=", 2)
 			if len(parts) == 2 {
