@@ -435,7 +435,7 @@ func httpMethodPostHandler(w http.ResponseWriter, r *http.Request, toolSet *mcp.
 		case "tools/list":
 			respToSend = handleToolsListJSONRPC(connID, &req, toolSet)
 		case "tools/call":
-			respToSend = handleToolCallJSONRPC(connID, &req, toolSet, cfg, r.Header)
+			respToSend = handleToolCallJSONRPC(connID, &req, toolSet, cfg, r)
 		default:
 			log.Printf("Received unknown JSON-RPC method '%s' for %s", req.Method, connID)
 			respToSend = createJSONRPCError(reqID, -32601, fmt.Sprintf("Method not found: %s", req.Method), nil)
@@ -796,7 +796,7 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 	return resp, nil
 }
 
-func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.ToolSet, cfg *config.Config, clientHeaders http.Header) jsonRPCResponse {
+func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.ToolSet, cfg *config.Config, r *http.Request) jsonRPCResponse {
 	// req.Params is interface{}, but should contain json.RawMessage for tools/call
 	rawParams, ok := req.Params.(json.RawMessage)
 	if !ok {
@@ -827,8 +827,14 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 
 	log.Printf("Executing tool '%s' for %s with input: %+v", params.ToolName, connID, params.Input)
 
+	// --- Pass ConnID if needed ---
+	if cfg.PassConnID && r.Header.Get("X-Connection-ID") == "" {
+		r.Header.Set("X-Connection-ID", connID)
+		log.Printf("Passing connection ID to downstream tool in X-Connection-ID header: %s", connID)
+	}
+
 	// --- Execute the actual tool call ---
-	httpResp, execErr := executeToolCall(&params, toolSet, cfg, clientHeaders)
+	httpResp, execErr := executeToolCall(&params, toolSet, cfg, r.Header)
 
 	// --- Process Response ---
 	var resultPayload ToolResultPayload

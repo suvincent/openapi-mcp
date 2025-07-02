@@ -50,6 +50,8 @@ func main() {
     var setHeaderToBody stringSliceFlag
     flag.Var(&setHeaderToBody, "set-header-to-body", "Map header values to request body fields (e.g., 'user.idToken=headers.X-Auth-Token')")
 
+	passConnID := flag.Bool("pass-conn-id", false, "Pass the connection ID to the downstream tool in the X-Connection-ID header")
+
     serverBaseURL := flag.String("base-url", "", "Manually override the server base URL")
     defaultToolName := flag.String("name", "OpenAPI-MCP Tools", "Default name for the toolset")
 	defaultToolDesc := flag.String("desc", "Tools generated from OpenAPI spec", "Default description for the toolset")
@@ -124,6 +126,7 @@ func main() {
 		CustomHeaders:     customHeadersEnv,
 		SetBody:           setBody,
 		SetHeaderToBody:   setHeaderToBody,
+		PassConnID:        *passConnID,
 	}
 
 	log.Printf("Configuration loaded: %+v\n", cfg)
