@@ -16,7 +16,6 @@ import (
 
 	"github.com/ckanthony/openapi-mcp/pkg/config"
 	"github.com/ckanthony/openapi-mcp/pkg/mcp"
-	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -299,12 +298,40 @@ func TestHttpMethodPostHandler(t *testing.T) {
 			},
 			checkAsyncResponse: nil, // No async response should be successfully sent
 		},
+		{
+			name: "Tool Call with sessionId query param and pass-conn-id enabled",
+			requestBodyFn: func(connID string) string {
+				return `{
+					"jsonrpc": "2.0", 
+					"method": "tools/call", 
+					"id": "call-post-session-1", 
+					"params": {"name": "get_user", "arguments": {"user_id": "sessionUser"}}
+				}`
+			},
+			expectedSyncStatus: http.StatusAccepted,
+			expectedSyncBody:   "Request accepted, response will be sent via SSE.\n",
+			checkAsyncResponse: func(t *testing.T, resp jsonRPCResponse) {
+				assert.Equal(t, "call-post-session-1", resp.ID)
+				assert.Nil(t, resp.Error)
+				resultPayload, ok := resp.Result.(ToolResultPayload)
+				require.True(t, ok)
+				assert.False(t, resultPayload.IsError)
+				require.Len(t, resultPayload.Content, 1)
+				assert.JSONEq(t, `{"id":"sessionUser"}`, resultPayload.Content[0].Text)
+			},
+			mockBackend: func(w http.ResponseWriter, r *http.Request) {
+				// This is the key assertion for this test case
+				assert.Equal(t, "test-conn-id", r.Header.Get("X-Connection-ID"))
+				w.WriteHeader(http.StatusOK)
+				fmt.Fprintln(w, `{"id":"sessionUser"}`)
+			},
+		},
 	}
 
 	// --- Run Test Cases ---
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			connID := uuid.NewString() // Generate unique connID for each subtest
+			connID := "test-conn-id"
 
 			// Setup mock backend if needed for this test case
 			var backendServer *httptest.Server
@@ -337,12 +364,22 @@ func TestHttpMethodPostHandler(t *testing.T) {
 			}
 
 			reqBody := tc.requestBodyFn(connID) // Generate request body
-			req := httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(reqBody))
+			var req *http.Request
+			if tc.name == "Tool Call with sessionId query param and pass-conn-id enabled" {
+				req = httptest.NewRequest(http.MethodPost, "/mcp?sessionId="+connID, strings.NewReader(reqBody))
+			} else {
+				req = httptest.NewRequest(http.MethodPost, "/mcp", strings.NewReader(reqBody))
+				req.Header.Set("X-Connection-ID", connID) // Use the generated connID
+			}
 			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("X-Connection-ID", connID) // Use the generated connID
 			rr := httptest.NewRecorder()
 
-			httpMethodPostHandler(rr, req, toolSet, cfg)
+			testCfg := cfg
+			if tc.name == "Tool Call with sessionId query param and pass-conn-id enabled" {
+				testCfg.PassConnID = true
+			}
+
+			httpMethodPostHandler(rr, req, toolSet, testCfg)
 
 			// 1. Check synchronous response
 			assert.Equal(t, tc.expectedSyncStatus, rr.Code, "Unexpected status code for sync response")
@@ -364,7 +401,7 @@ func TestHttpMethodPostHandler(t *testing.T) {
 					if ok { // Only fail if the channel wasn't closed AND we got a message
 						t.Errorf("Received unexpected async response when none was expected: %+v", unexpectedResp)
 					}
-					// If !ok, channel was closed, which is fine/expected after cleanup
+				// If !ok, channel was closed, which is fine/expected after cleanup
 				case <-time.After(50 * time.Millisecond):
 					// Success - no message received quickly, channel likely blocked as expected
 				}

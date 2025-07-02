@@ -41,6 +41,7 @@ type Config struct {
 	CustomHeaders string   // Comma-separated list of headers (e.g., "Header1:Value1,Header2:Value2") to add to outgoing requests.
 	SetBody          []string // Key-value pairs to set in the request body (e.g., "user.name=ooxx")
 	SetHeaderToBody  []string // Map header values to request body fields (e.g., "user.idToken=headers.X-Auth-Token")
+	PassConnID       bool     // Pass the connection ID to the downstream tool in the X-Connection-ID header.
 }
 
 // GetAPIKey resolves the API key value, prioritizing the environment variable over the direct flag.

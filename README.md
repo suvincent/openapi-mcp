@@ -209,6 +209,7 @@ The `openapi-mcp` command accepts the following flags:
 | `--desc`             | Default description for the generated MCP toolset (used if spec has no description).                                | `string`      | "Tools generated from OpenAPI spec" |
 | `--set-body`         | Key-value pairs to set in the request body (e.g., `user.name=ooxx`). Can be repeated.                               | `string slice`| (none)                           |
 | `--set-header-to-body` | Map header values from the client request to request body fields (e.g., `user.idToken=headers.X-Auth-Token`). Can be repeated. | `string slice`| (none)                           |
+| `--pass-conn-id`       | If the client provides the connection ID via the `sessionId` query parameter, this flag ensures the `X-Connection-ID` header is still passed to the downstream tool. | `bool`        | `false`                          |
 
 **Note:** You can get this list by running the tool with the `--help` flag (e.g., `docker run --rm ckanthony/openapi-mcp:latest --help`).
 
