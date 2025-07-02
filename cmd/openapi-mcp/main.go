@@ -46,9 +46,9 @@ func main() {
 	var excludeOps stringSliceFlag
     flag.Var(&excludeOps, "exclude-op", "Operation ID to exclude (can be repeated)")
     var setBody stringSliceFlag
-    flag.Var(&setBody, "set-body", "Key-value pair to set in the request body (e.g., 'user.name=ooxx')")
+    flag.Var(&setBody, "set-body", "Key-value pair to set in the request body for a specific tool, in the format '{toolName}.{bodyPath}=value' (e.g., 'MyTool.user.name=ooxx')")
     var setHeaderToBody stringSliceFlag
-    flag.Var(&setHeaderToBody, "set-header-to-body", "Map header values to request body fields (e.g., 'user.idToken=headers.X-Auth-Token')")
+    flag.Var(&setHeaderToBody, "set-header-to-body", "Map header values to request body fields for a specific tool, in the format '{toolName}.{bodyPath}=headers.{headerName}' (e.g., 'MyTool.user.idToken=headers.X-Auth-Token')")
 
 	passConnID := flag.Bool("pass-conn-id", false, "Pass the connection ID to the downstream tool in the X-Connection-ID header")
 

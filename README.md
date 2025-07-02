@@ -204,8 +204,8 @@ The `openapi-mcp` command accepts the following flags:
 | `--base-url`         | Manually override the target API server base URL detected from the spec.                                              | `string`      | (none)                           |
 | `--name`             | Default name for the generated MCP toolset (used if spec has no title).                                             | `string`      | "OpenAPI-MCP Tools"            |
 | `--desc`             | Default description for the generated MCP toolset (used if spec has no description).                                | `string`      | "Tools generated from OpenAPI spec" |
-| `--set-body`         | Key-value pairs to set in the request body (e.g., `user.name=ooxx`). Can be repeated.                               | `string slice`| (none)                           |
-| `--set-header-to-body` | Map header values from the client request to request body fields (e.g., `user.idToken=headers.X-Auth-Token`). Can be repeated. | `string slice`| (none)                           |
+| `--set-body`         | Key-value pairs to set in the request body for a specific tool, in the format `{toolName}.{bodyPath}=value` (e.g., `MyTool.user.name=ooxx`). Can be repeated. | `string slice`| (none)                           |
+| `--set-header-to-body` | Map header values from the client request to request body fields for a specific tool, in the format `{toolName}.{bodyPath}=headers.{headerName}` (e.g., `MyTool.user.idToken=headers.X-Auth-Token`). Can be repeated. | `string slice`| (none)                           |
 | `--pass-conn-id`       | If the client provides the connection ID via the `sessionId` query parameter, this flag ensures the `X-Connection-ID` header is still passed to the downstream tool. | `bool`        | `false`                          |
 
 **Note:** You can get this list by running the tool with the `--help` flag (e.g., `docker run --rm ckanthony/openapi-mcp:latest --help`).
