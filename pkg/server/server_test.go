@@ -667,7 +667,7 @@ func TestExecuteToolCall(t *testing.T) {
 		},
 		// --- Set Nested Body Value from Config ---
 		{
-			name: "POST with nested body value from config",
+			name: "POST with tool-specific nested body value from config",
 			params: ToolCallParams{
 				ToolName: "update_user",
 				Input: map[string]interface{}{
@@ -679,7 +679,7 @@ func TestExecuteToolCall(t *testing.T) {
 				Path:   "/update_user",
 			},
 			cfg: &config.Config{
-				SetBody: []string{"user.name=ooxx", "user.details.age=30"},
+				SetBody: []string{"update_user.user.name=ooxx", "update_user.user.details.age=30", "other_tool.user.name=ignored"},
 			},
 			expectError:       false,
 			backendStatusCode: http.StatusOK,
@@ -693,7 +693,7 @@ func TestExecuteToolCall(t *testing.T) {
 		},
 		// --- Set Header to Body from Config ---
 		{
-			name: "POST with header value injected into body",
+			name: "POST with tool-specific header value injected into body",
 			params: ToolCallParams{
 				ToolName: "update_profile",
 				Input: map[string]interface{}{
@@ -705,7 +705,7 @@ func TestExecuteToolCall(t *testing.T) {
 				Path:   "/profile",
 			},
 			cfg: &config.Config{
-				SetHeaderToBody: []string{"user.idToken=headers.X-Auth-Token"},
+				SetHeaderToBody: []string{"update_profile.user.idToken=headers.X-Auth-Token", "other_tool.user.idToken=headers.X-Auth-Token"},
 			},
 			expectError:       false,
 			backendStatusCode: http.StatusOK,
@@ -768,9 +768,9 @@ func TestExecuteToolCall(t *testing.T) {
 				toolSet.Operations[tc.params.ToolName] = tc.opDetail
 			}
 
-			// For the "POST with header value injected into body" test case, set the clientHeaders
+			// For the "POST with tool-specific header value injected into body" test case, set the clientHeaders
 			var clientHeaders http.Header
-			if tc.name == "POST with header value injected into body" {
+			if tc.name == "POST with tool-specific header value injected into body" {
 				clientHeaders = make(http.Header)
 				clientHeaders.Set("X-Auth-Token", "test-auth-token")
 			}

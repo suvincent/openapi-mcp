@@ -704,23 +704,26 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 	for _, mapping := range cfg.SetHeaderToBody {
 		parts := strings.SplitN(mapping, "=", 2)
 		if len(parts) == 2 {
-			bodyPath := parts[0]
-			headerSource := parts[1]
+			keyParts := strings.SplitN(parts[0], ".", 2)
+			if len(keyParts) == 2 && keyParts[0] == toolName {
+				bodyPath := keyParts[1]
+				headerSource := parts[1]
 
-			if strings.HasPrefix(headerSource, "headers.") {
-				headerName := strings.TrimPrefix(headerSource, "headers.")
-				headerValue := clientHeaders.Get(headerName)
-				if headerValue != "" {
-					setNestedValue(bodyData, bodyPath, headerValue)
-					log.Printf("[ExecuteToolCall] Injected header '%s' into body path '%s'", headerName, bodyPath)
+				if strings.HasPrefix(headerSource, "headers.") {
+					headerName := strings.TrimPrefix(headerSource, "headers.")
+					headerValue := clientHeaders.Get(headerName)
+					if headerValue != "" {
+						setNestedValue(bodyData, bodyPath, headerValue)
+						log.Printf("[ExecuteToolCall] Injected header '%s' into body path '%s' for tool '%s'", headerName, bodyPath, toolName)
+					} else {
+						log.Printf("[ExecuteToolCall] Header '%s' not found in client request, skipping injection to body path '%s' for tool '%s'", headerName, bodyPath, toolName)
+					}
 				} else {
-					log.Printf("[ExecuteToolCall] Header '%s' not found in client request, skipping injection to body path '%s'", headerName, bodyPath)
+					log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected '{toolName}.{bodyPath}=headers.{headerName}'", mapping)
 				}
-			} else {
-				log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected 'body.path=headers.Header-Name'", mapping)
 			}
 		} else {
-			log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected 'body.path=headers.Header-Name'", mapping)
+			log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected '{toolName}.{bodyPath}=headers.{headerName}'", mapping)
 		}
 	}
 
@@ -729,7 +732,11 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 		for _, kv := range cfg.SetBody {
 			parts := strings.SplitN(kv, "=", 2)
 			if len(parts) == 2 {
-				setNestedValue(bodyData, parts[0], parts[1])
+				keyParts := strings.SplitN(parts[0], ".", 2)
+				if len(keyParts) == 2 && keyParts[0] == toolName {
+					setNestedValue(bodyData, keyParts[1], parts[1])
+					log.Printf("[ExecuteToolCall] Injected body value for tool '%s': %s=%s", toolName, keyParts[1], parts[1])
+				}
 			}
 		}
 
