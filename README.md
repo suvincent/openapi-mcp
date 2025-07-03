@@ -1,9 +1,9 @@
 # OpenAPI-MCP: Dockerized MCP Server to allow your AI agent to access any API with existing api docs
 **feature that forward request headers in tool calls is from https://github.com/mark19891107/openapi-mcp**
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/ckanthony/openapi-mcp.svg)](https://pkg.go.dev/github.com/ckanthony/openapi-mcp)
-[![CI](https://github.com/ckanthony/openapi-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/ckanthony/openapi-mcp/actions/workflows/ci.yml)
-[![codecov](https://codecov.io/gh/ckanthony/openapi-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/ckanthony/openapi-mcp)
+[![Go Reference](https://pkg.go.dev/badge/github.com/suvincent/openapi-mcp.svg)](https://pkg.go.dev/github.com/suvincent/openapi-mcp)
+[![CI](https://github.com/suvincent/openapi-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/suvincent/openapi-mcp/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/suvincent/openapi-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/suvincent/openapi-mcp)
 ![](https://badge.mcpx.dev?type=dev 'MCP Dev')
 
 ![openapi-mcp logo](openapi-mcp.png)
