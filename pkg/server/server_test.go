@@ -717,6 +717,34 @@ func TestExecuteToolCall(t *testing.T) {
 				assert.JSONEq(t, `{"profile_id":"p123","user":{"idToken":"test-auth-token"}}`, string(bodyBytes))
 			},
 		},
+		// --- Set Body and Set Header to Body Overlapping ---
+		{
+			name: "POST with set-body and set-header-to-body overlapping",
+			params: ToolCallParams{
+				ToolName: "update_user_advanced",
+				Input: map[string]interface{}{
+					"user_id": "u789",
+					"data":    map[string]interface{}{"field": "original_value"},
+				},
+			},
+			opDetail: mcp.OperationDetail{
+				Method: "POST",
+				Path:   "/update_user_advanced",
+			},
+			cfg: &config.Config{
+				SetHeaderToBody: []string{"update_user_advanced.data.field=headers.X-Custom-Field"},
+				SetBody:         []string{"update_user_advanced.data.source=config_value", "update_user_advanced.data.field=set_body_value"},
+			},
+			expectError:       false,
+			backendStatusCode: http.StatusOK,
+			backendResponse:   `{"status":"advanced_updated"}`,
+			requestAsserter: func(t *testing.T, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/update_user_advanced", r.URL.Path)
+				bodyBytes, _ := io.ReadAll(r.Body)
+				assert.JSONEq(t, `{"user_id":"u789","data":{"field":"set_body_value","source":"config_value"}}`, string(bodyBytes))
+			},
+		},
 		// --- Error Case (Tool Not Found in ToolSet) ---
 		{
 			name: "Error - Tool Not Found",
@@ -773,6 +801,10 @@ func TestExecuteToolCall(t *testing.T) {
 			if tc.name == "POST with tool-specific header value injected into body" {
 				clientHeaders = make(http.Header)
 				clientHeaders.Set("X-Auth-Token", "test-auth-token")
+			}
+			if tc.name == "POST with set-body and set-header-to-body overlapping" {
+				clientHeaders = make(http.Header)
+				clientHeaders.Set("X-Custom-Field", "header_value")
 			}
 
 			// --- Execute Function ---

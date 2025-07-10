@@ -2,7 +2,7 @@
 **feature that forward request headers in tool calls is from https://github.com/mark19891107/openapi-mcp**
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/suvincent/openapi-mcp.svg)](https://pkg.go.dev/github.com/suvincent/openapi-mcp)
-[![CI](https://github.com/suvincent/openapi-mcp/actions/workflows/ci.yml/badge.svg)](https://github.com/suvincent/openapi-mcp/actions/workflows/ci.yml)
+[![CI](https://github.com/suvincent/openapi-mcp/actions/workflows/ci.yml/badge.svg)](https://pkg.go.dev/github.com/suvincent/openapi-mcp/actions/workflows/ci.yml)
 [![codecov](https://codecov.io/gh/suvincent/openapi-mcp/branch/main/graph/badge.svg)](https://codecov.io/gh/suvincent/openapi-mcp)
 ![](https://badge.mcpx.dev?type=dev 'MCP Dev')
 
@@ -49,6 +49,13 @@ Run the demo yourself: [Running the Weatherbit Example (Step-by-Step)](#running-
 -   **Server URL Detection:** Uses server URLs from the spec as the base for tool interactions (can be overridden).
 -   **Filtering:** Options to include/exclude specific operations or tags (`--include-tag`, `--exclude-tag`, `--include-op`, `--exclude-op`).
 -   **Request Header Injection:** Pass custom headers (e.g., for additional auth, tracing) via the `REQUEST_HEADERS` environment variable.
+-   **Dynamic Request Body Modification:**
+    -   `--set-header-to-body`: Injects a value from a client header into the request body.
+    -   `--set-body`: Sets a fixed value in the request body.
+    -   **Overwrite Priority:** The server applies modifications in a specific order, with later steps overwriting earlier ones:
+        1.  **Original API Body:** The initial request body from the tool call.
+        2.  **`--set-header-to-body`:** Values from client headers are injected.
+        3.  **`--set-body`:** Fixed values are set, taking final precedence and overwriting any previous values for the same field.
 
 When a tool returns a JSON object containing a `path` field, combine it with the server base URL to form a full download link. For example, if the response is `{ "path": "/files/123" }` and the API base URL is `https://api.example.com`, an LLM can download using `https://api.example.com/files/123`.
 
@@ -82,31 +89,25 @@ Alternatively, you can use the pre-built image available on [Docker Hub](https:/
 2.  **Run the Container:**
     You need to provide the OpenAPI specification and any necessary API key configuration when running the container.
 
-    *   **Example 1: Using a local spec file and `.env` file:**
-        -   Create a directory (e.g., `./my-api`) containing your `openapi.json` or `swagger.yaml`.
-        -   If the API requires a key, create a `.env` file in the *same directory* (e.g., `./my-api/.env`) with `API_KEY=your_actual_key` (replace `API_KEY` if your `--api-key-env` flag is different).
+    *   **Example 1: Using `--set-body` to add a fixed value to the request body:
         ```bash
-        docker run -p 8080:8080 --rm \\
-            -v $(pwd)/my-api:/app/spec \\
-            --env-file $(pwd)/my-api/.env \\
-            openapi-mcp:latest \\
-            --spec /app/spec/openapi.json \\
-            --api-key-env API_KEY \\
-            --api-key-name X-API-Key \\
-            --api-key-loc header
+        docker run -p 8080:8080 --rm \
+            -v $(pwd)/my-api:/app/spec \
+            openapi-mcp:latest \
+            --spec /app/spec/openapi.json \
+            --set-body "MyTool.user.name=ooxx"
         ```
-        *(Adjust `--spec`, `--api-key-env`, `--api-key-name`, `--api-key-loc`, and `-p` as needed.)*
+        *(This example assumes a tool named `MyTool` and sets the `name` field within the `user` object in the request body to `ooxx`.)*
 
-    *   **Example 2: Using a remote spec URL and direct environment variable:**
+    *   **Example 2: Using `--set-header-to-body` to inject a header value:
         ```bash
-        docker run -p 8080:8080 --rm \\
-            -e SOME_API_KEY="your_actual_key" \\
-            openapi-mcp:latest \\
-            --spec https://petstore.swagger.io/v2/swagger.json \\
-            --api-key-env SOME_API_KEY \\
-            --api-key-name api_key \\
-            --api-key-loc header
+        docker run -p 8080:8080 --rm \
+            -v $(pwd)/my-api:/app/spec \
+            openapi-mcp:latest \
+            --spec /app/spec/openapi.json \
+            --set-header-to-body "MyTool.user.idToken=headers.X-Auth-Token"
         ```
+        *(This example takes the value from the `X-Auth-Token` header sent by the client and injects it into the `idToken` field within the `user` object in the request body for the `MyTool` tool.)*
 
     *   **Key Docker Run Options:**
         *   `-p <host_port>:8080`: Map a port on your host to the container's default port 8080.
@@ -147,13 +148,13 @@ This repository includes an example using the [Weatherbit API](https://www.weath
 5.  **Run the Docker Container:**
     From the `openapi-mcp` **root directory** (the one containing the `example` folder), run the following command:
     ```bash
-    docker run -p 8080:8080 --rm \\
-        -v $(pwd)/example/weather:/app/spec \\
-        --env-file $(pwd)/example/weather/.env \\
-        ckanthony/openapi-mcp:latest \\
-        --spec /app/spec/weatherbitio-swagger.json \\
-        --api-key-env API_KEY \\
-        --api-key-name key \\
+    docker run -p 8080:8080 --rm \
+        -v $(pwd)/example/weather:/app/spec \
+        --env-file $(pwd)/example/weather/.env \
+        ckanthony/openapi-mcp:latest \
+        --spec /app/spec/weatherbitio-swagger.json \
+        --api-key-env API_KEY \
+        --api-key-name key \
         --api-key-loc query
     ```
     *   `-v $(pwd)/example/weather:/app/spec`: Mounts the local `example/weather` directory (containing the spec and `.env` file) to `/app/spec` inside the container.

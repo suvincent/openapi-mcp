@@ -700,54 +700,54 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 	var reqBody io.Reader
 	var bodyBytes []byte // Keep for logging
 
-	// Process SetHeaderToBody config
-	for _, mapping := range cfg.SetHeaderToBody {
-		parts := strings.SplitN(mapping, "=", 2)
-		if len(parts) == 2 {
-			keyParts := strings.SplitN(parts[0], ".", 2)
-			if len(keyParts) == 2 && keyParts[0] == toolName {
-				bodyPath := keyParts[1]
-				headerSource := parts[1]
+	if requestBodyRequired {
+		// Process SetHeaderToBody config first
+		for _, mapping := range cfg.SetHeaderToBody {
+			parts := strings.SplitN(mapping, "=", 2)
+			if len(parts) == 2 {
+				keyParts := strings.SplitN(parts[0], ".", 2)
+				if len(keyParts) == 2 && keyParts[0] == toolName {
+					bodyPath := keyParts[1]
+					headerSource := parts[1]
 
-				if strings.HasPrefix(headerSource, "headers.") {
-					headerName := strings.TrimPrefix(headerSource, "headers.")
-					headerValue := clientHeaders.Get(headerName)
-					if headerValue != "" {
-						setNestedValue(bodyData, bodyPath, headerValue)
-						log.Printf("[ExecuteToolCall] Injected header '%s' into body path '%s' for tool '%s'", headerName, bodyPath, toolName)
+					if strings.HasPrefix(headerSource, "headers.") {
+						headerName := strings.TrimPrefix(headerSource, "headers.")
+						headerValue := clientHeaders.Get(headerName)
+						if headerValue != "" {
+							setNestedValue(bodyData, bodyPath, headerValue, toolName)
+						} else {
+							log.Printf("[ExecuteToolCall] Header '%s' not found in client request, skipping injection to body path '%s' for tool '%s'", headerName, bodyPath, toolName)
+						}
 					} else {
-						log.Printf("[ExecuteToolCall] Header '%s' not found in client request, skipping injection to body path '%s' for tool '%s'", headerName, bodyPath, toolName)
+						log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected '{toolName}.{bodyPath}=headers.{headerName}'", mapping)
 					}
-				} else {
-					log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected '{toolName}.{bodyPath}=headers.{headerName}'", mapping)
 				}
+			} else {
+				log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected '{toolName}.{bodyPath}=headers.{headerName}'", mapping)
 			}
-		} else {
-			log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected '{toolName}.{bodyPath}=headers.{headerName}'", mapping)
 		}
-	}
 
-	if requestBodyRequired && len(bodyData) > 0 {
-		// Inject custom body values from SetBody config
+		// Process SetBody config, potentially overwriting SetHeaderToBody values
 		for _, kv := range cfg.SetBody {
 			parts := strings.SplitN(kv, "=", 2)
 			if len(parts) == 2 {
 				keyParts := strings.SplitN(parts[0], ".", 2)
 				if len(keyParts) == 2 && keyParts[0] == toolName {
-					setNestedValue(bodyData, keyParts[1], parts[1])
-					log.Printf("[ExecuteToolCall] Injected body value for tool '%s': %s=%s", toolName, keyParts[1], parts[1])
+					setNestedValue(bodyData, keyParts[1], parts[1], toolName)
 				}
 			}
 		}
 
-		var err error
-		bodyBytes, err = json.Marshal(bodyData)
-		if err != nil {
-			log.Printf("[ExecuteToolCall] Error marshalling request body: %v", err)
-			return nil, fmt.Errorf("error marshalling request body: %w", err)
+		if len(bodyData) > 0 {
+			var err error
+			bodyBytes, err = json.Marshal(bodyData)
+			if err != nil {
+				log.Printf("[ExecuteToolCall] Error marshalling request body: %v", err)
+				return nil, fmt.Errorf("error marshalling request body: %w", err)
+			}
+			reqBody = bytes.NewBuffer(bodyBytes)
+			log.Printf("[ExecuteToolCall] Request body: %s", string(bodyBytes))
 		}
-		reqBody = bytes.NewBuffer(bodyBytes)
-		log.Printf("[ExecuteToolCall] Request body: %s", string(bodyBytes))
 	}
 
 	// --- Create HTTP Request ---
@@ -975,16 +975,27 @@ func tryWriteHTTPError(w http.ResponseWriter, code int, message string) {
 }
 
 // setNestedValue sets a value in a nested map based on a dot-separated key.
-func setNestedValue(data map[string]interface{}, key string, value string) {
+func setNestedValue(data map[string]interface{}, key string, value string, toolName string) {
 	parts := strings.Split(key, ".")
 	for i, part := range parts {
 		if i == len(parts)-1 {
+			if existing, ok := data[part]; ok {
+				log.Printf("[ExecuteToolCall] Overwriting body field for tool '%s'. Path: '%s', Old: '%v', New: '%s'", toolName, key, existing, value)
+			} else {
+				log.Printf("[ExecuteToolCall] Setting body field for tool '%s'. Path: '%s', Value: '%s'", toolName, key, value)
+			}
 			data[part] = value
 		} else {
 			if _, ok := data[part]; !ok {
 				data[part] = make(map[string]interface{})
 			}
-			data = data[part].(map[string]interface{})
+			// Type assertion to ensure we can continue traversing
+			if nextMap, ok := data[part].(map[string]interface{}); ok {
+				data = nextMap
+			} else {
+				log.Printf("[ExecuteToolCall] Warning: Cannot set nested value for key '%s'. Path '%s' is not a map.", key, part)
+				return
+			}
 		}
 	}
 }
