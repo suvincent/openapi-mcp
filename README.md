@@ -189,6 +189,20 @@ A `docker-compose.yml` file is provided in the `example/` directory to demonstra
 
 3.  **Stop the service:** Press `Ctrl+C` in the terminal where Compose is running, or run `docker-compose down` from the `example` directory in another terminal.
 
+### Using the Demo Docker Compose
+
+A `docker-compose-demo.yml` file is provided in the `example/` directory to showcase a more complex setup.
+
+1.  **Run with Docker Compose:** Navigate to the `example` directory and run:
+    ```bash
+    cd example
+    docker-compose -f docker-compose-demo.yml up --build
+    ```
+    *   This command uses the `-f` flag to specify the `docker-compose-demo.yml` file.
+    *   The MCP server will be available at `http://localhost:8080`.
+
+2.  **Stop the service:** Press `Ctrl+C` in the terminal where Compose is running, or run `docker-compose -f docker-compose-demo.yml down` from the `example` directory in another terminal.
+
 ## Command-Line Options
 
 The `openapi-mcp` command accepts the following flags:
