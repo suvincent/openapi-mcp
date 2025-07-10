@@ -37,6 +37,13 @@ func createTestToolSetForCall() *mcp.ToolSet {
 					},
 					Required: []string{"user_id"},
 				},
+				OutputSchema: mcp.Schema{
+					Type: "object",
+					Properties: map[string]mcp.Schema{
+						"id": {Type: "string"},
+					},
+					Required: []string{"id"},
+				},
 			},
 			{
 				Name:        "post_data",
@@ -47,6 +54,12 @@ func createTestToolSetForCall() *mcp.ToolSet {
 						"data": {Type: "string"},
 					},
 					Required: []string{"data"},
+				},
+				OutputSchema: mcp.Schema{
+					Type: "object",
+					Properties: map[string]mcp.Schema{
+						"status": {Type: "string"},
+					},
 				},
 			},
 		},
@@ -166,9 +179,11 @@ func TestHttpMethodPostHandler(t *testing.T) {
 				require.True(t, ok)
 				assert.False(t, resultPayload.IsError)
 				require.Len(t, resultPayload.Content, 1)
-				assert.JSONEq(t, `{"id":"postUser"}`, resultPayload.Content[0].Text)
+				assert.Equal(t, "text", resultPayload.Content[0].Type)
+				assert.Equal(t, "{\"id\":\"postUser\"}\n", resultPayload.Content[0].Text)
 			},
 			mockBackend: func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusOK)
 				fmt.Fprintln(w, `{"id":"postUser"}`)
 			},
@@ -467,7 +482,7 @@ func TestHttpMethodGetHandler(t *testing.T) {
 	assert.Contains(t, bodyContent, "event: endpoint\n"+expectedEndpointData, "Body should contain endpoint event")
 	assert.Contains(t, bodyContent, "event: message\ndata: {", "Body should contain start of a message event (e.g., mcp-ready)")
 	// Check if connectionId is present in the ready message (adjust based on actual JSON structure)
-	assert.Contains(t, bodyContent, `"connectionId":"`+connID+`"`, "Body should contain mcp-ready event with correct connection ID")
+	assert.Contains(t, bodyContent, connID, "Body should contain mcp-ready event with correct connection ID")
 
 	// The explicit cleanupTestConnection call is not needed because the handler's defer and the test's defer handle it.
 }
@@ -702,6 +717,34 @@ func TestExecuteToolCall(t *testing.T) {
 				assert.JSONEq(t, `{"profile_id":"p123","user":{"idToken":"test-auth-token"}}`, string(bodyBytes))
 			},
 		},
+		// --- Set Body and Set Header to Body Overlapping ---
+		{
+			name: "POST with set-body and set-header-to-body overlapping",
+			params: ToolCallParams{
+				ToolName: "update_user_advanced",
+				Input: map[string]interface{}{
+					"user_id": "u789",
+					"data":    map[string]interface{}{"field": "original_value"},
+				},
+			},
+			opDetail: mcp.OperationDetail{
+				Method: "POST",
+				Path:   "/update_user_advanced",
+			},
+			cfg: &config.Config{
+				SetHeaderToBody: []string{"update_user_advanced.data.field=headers.X-Custom-Field"},
+				SetBody:         []string{"update_user_advanced.data.source=config_value", "update_user_advanced.data.field=set_body_value"},
+			},
+			expectError:       false,
+			backendStatusCode: http.StatusOK,
+			backendResponse:   `{"status":"advanced_updated"}`,
+			requestAsserter: func(t *testing.T, r *http.Request) {
+				assert.Equal(t, http.MethodPost, r.Method)
+				assert.Equal(t, "/update_user_advanced", r.URL.Path)
+				bodyBytes, _ := io.ReadAll(r.Body)
+				assert.JSONEq(t, `{"user_id":"u789","data":{"field":"set_body_value","source":"config_value"}}`, string(bodyBytes))
+			},
+		},
 		// --- Error Case (Tool Not Found in ToolSet) ---
 		{
 			name: "Error - Tool Not Found",
@@ -759,9 +802,13 @@ func TestExecuteToolCall(t *testing.T) {
 				clientHeaders = make(http.Header)
 				clientHeaders.Set("X-Auth-Token", "test-auth-token")
 			}
+			if tc.name == "POST with set-body and set-header-to-body overlapping" {
+				clientHeaders = make(http.Header)
+				clientHeaders.Set("X-Custom-Field", "header_value")
+			}
 
 			// --- Execute Function ---
-			httpResp, err := executeToolCall(&tc.params, toolSet, &testCfg, clientHeaders) // Use the potentially modified testCfg and clientHeaders
+			httpResp, err := executeToolCall(&tc.params, toolSet, &testCfg, clientHeaders, nil) // Use the potentially modified testCfg
 
 			// --- Assertions ---
 			if tc.expectError {
@@ -839,19 +886,33 @@ func TestWriteSSEEvent(t *testing.T) {
 				assert.NoError(t, err)
 				// For struct data, use JSONEq for robust comparison
 				if _, isStruct := tc.data.(jsonRPCRequest); isStruct {
-					prefix := fmt.Sprintf("event: %s\ndata: ", tc.eventName)
+					prefix := fmt.Sprintf("event: %s\n", tc.eventName)
 					suffix := "\n\n"
 					require.True(t, strings.HasPrefix(rr.Body.String(), prefix))
 					require.True(t, strings.HasSuffix(rr.Body.String(), suffix))
-					actualJSON := strings.TrimSuffix(strings.TrimPrefix(rr.Body.String(), prefix), suffix)
+					bodyContent := strings.TrimSuffix(strings.TrimPrefix(rr.Body.String(), prefix), suffix)
+					var jsonLines []string
+					for _, line := range strings.Split(bodyContent, "\n") {
+						if strings.HasPrefix(line, "data: ") {
+							jsonLines = append(jsonLines, strings.TrimPrefix(line, "data: "))
+						}
+					}
+					actualJSON := strings.Join(jsonLines, "\n")
 					expectedJSONBytes, _ := json.Marshal(tc.data)
 					assert.JSONEq(t, string(expectedJSONBytes), actualJSON)
 				} else if _, isStruct := tc.data.(jsonRPCResponse); isStruct {
-					prefix := fmt.Sprintf("event: %s\ndata: ", tc.eventName)
+					prefix := fmt.Sprintf("event: %s\n", tc.eventName)
 					suffix := "\n\n"
 					require.True(t, strings.HasPrefix(rr.Body.String(), prefix))
 					require.True(t, strings.HasSuffix(rr.Body.String(), suffix))
-					actualJSON := strings.TrimSuffix(strings.TrimPrefix(rr.Body.String(), prefix), suffix)
+					bodyContent := strings.TrimSuffix(strings.TrimPrefix(rr.Body.String(), prefix), suffix)
+					var jsonLines []string
+					for _, line := range strings.Split(bodyContent, "\n") {
+						if strings.HasPrefix(line, "data: ") {
+							jsonLines = append(jsonLines, strings.TrimPrefix(line, "data: "))
+						}
+					}
+					actualJSON := strings.Join(jsonLines, "\n")
 					expectedJSONBytes, _ := json.Marshal(tc.data)
 					assert.JSONEq(t, string(expectedJSONBytes), actualJSON)
 				} else {

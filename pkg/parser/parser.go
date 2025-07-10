@@ -167,13 +167,13 @@ func generateToolSetV3(doc *openapi3.T, cfg *config.Config) (*mcp.ToolSet, error
 			toolDesc := getOperationDescriptionV3(op)
 
 			// Convert parameters (query, header, path, cookie)
-			parametersSchema, opParams, err := parametersToMCPSchemaAndDetailsV3(op.Parameters, cfg)
+			parametersSchema, opParams, err := parametersToMCPSchemaAndDetailsV3(op.Parameters, doc, cfg)
 			if err != nil {
 				return nil, fmt.Errorf("error processing v3 parameters for %s %s: %w", method, rawPath, err)
 			}
 
 			// Handle request body
-			requestBody, err := requestBodyToMCPV3(op.RequestBody)
+			requestBody, err := requestBodyToMCPV3(op.RequestBody, doc)
 			if err != nil {
 				log.Printf("Warning: skipping request body for %s %s due to error: %v", method, rawPath, err)
 			} else {
@@ -225,13 +225,18 @@ func generateToolSetV3(doc *openapi3.T, cfg *config.Config) (*mcp.ToolSet, error
 				}
 			}
 
-			// Prepend note about API key handling
-			finalToolDesc := "Note: The API key is handled by the server, no need to provide it. " + toolDesc
+			var outputSchema mcp.Schema
+			if respSchemaRef := findResponseSchemaV3(op); respSchemaRef != nil {
+				if os, err := openapiSchemaToMCPSchemaV3(respSchemaRef, doc); err == nil {
+					outputSchema = os
+				}
+			}
 
 			tool := mcp.Tool{
-				Name:        toolName,
-				Description: finalToolDesc,    // Use potentially modified description
-				InputSchema: parametersSchema, // Use InputSchema, assuming it contains combined params/body
+				Name:         toolName,
+				Description:  toolDesc,
+				InputSchema:  parametersSchema, // Use InputSchema, assuming it contains combined params/body
+				OutputSchema: outputSchema,
 			}
 			toolSet.Tools = append(toolSet.Tools, tool)
 
@@ -304,7 +309,7 @@ func shouldIncludeOperationV3(op *openapi3.Operation, cfg *config.Config) bool {
 }
 
 // parametersToMCPSchemaAndDetailsV3 converts parameters and also returns the parameter details.
-func parametersToMCPSchemaAndDetailsV3(params openapi3.Parameters, cfg *config.Config) (mcp.Schema, []mcp.ParameterDetail, error) {
+func parametersToMCPSchemaAndDetailsV3(params openapi3.Parameters, doc *openapi3.T, cfg *config.Config) (mcp.Schema, []mcp.ParameterDetail, error) {
 	mcpSchema := mcp.Schema{Type: "object", Properties: make(map[string]mcp.Schema), Required: []string{}}
 	opParams := []mcp.ParameterDetail{}
 	for _, paramRef := range params {
@@ -332,7 +337,7 @@ func parametersToMCPSchemaAndDetailsV3(params openapi3.Parameters, cfg *config.C
 			In:   param.In,
 		})
 
-		propSchema, err := openapiSchemaToMCPSchemaV3(param.Schema)
+		propSchema, err := openapiSchemaToMCPSchemaV3(param.Schema, doc)
 		if err != nil {
 			return mcp.Schema{}, nil, fmt.Errorf("v3 param '%s': %w", param.Name, err)
 		}
@@ -348,7 +353,7 @@ func parametersToMCPSchemaAndDetailsV3(params openapi3.Parameters, cfg *config.C
 	return mcpSchema, opParams, nil
 }
 
-func requestBodyToMCPV3(rbRef *openapi3.RequestBodyRef) (mcp.RequestBody, error) {
+func requestBodyToMCPV3(rbRef *openapi3.RequestBodyRef, doc *openapi3.T) (mcp.RequestBody, error) {
 	mcpRB := mcp.RequestBody{Content: make(map[string]mcp.Schema)}
 	if rbRef == nil || rbRef.Value == nil {
 		return mcpRB, nil
@@ -369,7 +374,7 @@ func requestBodyToMCPV3(rbRef *openapi3.RequestBodyRef) (mcp.RequestBody, error)
 	}
 
 	if mediaType != nil && mediaType.Schema != nil {
-		contentSchema, err := openapiSchemaToMCPSchemaV3(mediaType.Schema)
+		contentSchema, err := openapiSchemaToMCPSchemaV3(mediaType.Schema, doc)
 		if err != nil {
 			return mcp.RequestBody{}, fmt.Errorf("v3 request body (media type: %s): %w", chosenMediaTypeKey, err)
 		}
@@ -380,11 +385,18 @@ func requestBodyToMCPV3(rbRef *openapi3.RequestBodyRef) (mcp.RequestBody, error)
 	return mcpRB, nil
 }
 
-func openapiSchemaToMCPSchemaV3(oapiSchemaRef *openapi3.SchemaRef) (mcp.Schema, error) {
+func openapiSchemaToMCPSchemaV3(oapiSchemaRef *openapi3.SchemaRef, doc *openapi3.T) (mcp.Schema, error) {
 	if oapiSchemaRef == nil {
 		return mcp.Schema{Type: "string", Description: "Schema reference was nil"}, nil
 	}
 	if oapiSchemaRef.Value == nil {
+		if oapiSchemaRef.Ref != "" && doc != nil {
+			refSchema, err := resolveRefV3(oapiSchemaRef.Ref, doc)
+			if err != nil {
+				return mcp.Schema{}, err
+			}
+			return openapiSchemaToMCPSchemaV3(refSchema, doc)
+		}
 		return mcp.Schema{Type: "string", Description: fmt.Sprintf("Schema reference value was nil (ref: %s)", oapiSchemaRef.Ref)}, nil
 	}
 	oapiSchema := oapiSchemaRef.Value
@@ -406,7 +418,7 @@ func openapiSchemaToMCPSchemaV3(oapiSchemaRef *openapi3.SchemaRef) (mcp.Schema, 
 		mcpSchema.Properties = make(map[string]mcp.Schema)
 		mcpSchema.Required = oapiSchema.Required
 		for name, propRef := range oapiSchema.Properties {
-			propSchema, err := openapiSchemaToMCPSchemaV3(propRef)
+			propSchema, err := openapiSchemaToMCPSchemaV3(propRef, doc)
 			if err != nil {
 				return mcp.Schema{}, fmt.Errorf("v3 object property '%s': %w", name, err)
 			}
@@ -417,7 +429,7 @@ func openapiSchemaToMCPSchemaV3(oapiSchemaRef *openapi3.SchemaRef) (mcp.Schema, 
 		}
 	case "array":
 		if oapiSchema.Items != nil {
-			itemsSchema, err := openapiSchemaToMCPSchemaV3(oapiSchema.Items)
+			itemsSchema, err := openapiSchemaToMCPSchemaV3(oapiSchema.Items, doc)
 			if err != nil {
 				return mcp.Schema{}, fmt.Errorf("v3 array items: %w", err)
 			}
@@ -431,6 +443,52 @@ func openapiSchemaToMCPSchemaV3(oapiSchemaRef *openapi3.SchemaRef) (mcp.Schema, 
 		}
 	}
 	return mcpSchema, nil
+}
+
+func findResponseSchemaV3(op *openapi3.Operation) *openapi3.SchemaRef {
+	if op == nil || op.Responses == nil {
+		return nil
+	}
+	for code := 200; code <= 299; code++ {
+		key := fmt.Sprintf("%d", code)
+		if respRef := op.Responses.Value(key); respRef != nil && respRef.Value != nil {
+			if mt, ok := respRef.Value.Content["application/json"]; ok && mt.Schema != nil {
+				return mt.Schema
+			}
+			for _, mt := range respRef.Value.Content {
+				if mt.Schema != nil {
+					return mt.Schema
+				}
+			}
+		}
+	}
+	if respRef := op.Responses.Value("default"); respRef != nil && respRef.Value != nil {
+		if mt, ok := respRef.Value.Content["application/json"]; ok && mt.Schema != nil {
+			return mt.Schema
+		}
+		for _, mt := range respRef.Value.Content {
+			if mt.Schema != nil {
+				return mt.Schema
+			}
+		}
+	}
+	return nil
+}
+
+func resolveRefV3(ref string, doc *openapi3.T) (*openapi3.SchemaRef, error) {
+	if doc == nil {
+		return nil, fmt.Errorf("nil document provided for ref resolution")
+	}
+	const prefix = "#/components/schemas/"
+	if !strings.HasPrefix(ref, prefix) {
+		return nil, fmt.Errorf("unsupported $ref format: %s", ref)
+	}
+	name := strings.TrimPrefix(ref, prefix)
+	schemaRef, ok := doc.Components.Schemas[name]
+	if !ok {
+		return nil, fmt.Errorf("$ref '%s' not found in components", ref)
+	}
+	return schemaRef, nil
 }
 
 // --- V2 Specific Implementation ---
@@ -527,13 +585,18 @@ func generateToolSetV2(doc *spec.Swagger, cfg *config.Config) (*mcp.ToolSet, err
 				}
 			}
 
-			// Prepend note about API key handling
-			finalToolDesc := "Note: The API key is handled by the server, no need to provide it. " + toolDesc
+			var outputSchema mcp.Schema
+			if respSchema := findResponseSchemaV2(op); respSchema != nil {
+				if os, err := swaggerSchemaToMCPSchemaV2(respSchema, doc.Definitions); err == nil {
+					outputSchema = os
+				}
+			}
 
 			tool := mcp.Tool{
-				Name:        toolName,
-				Description: finalToolDesc,    // Use potentially modified description
-				InputSchema: parametersSchema, // Use InputSchema, assuming it contains combined params/body
+				Name:         toolName,
+				Description:  toolDesc,
+				InputSchema:  parametersSchema,
+				OutputSchema: outputSchema,
 			}
 			toolSet.Tools = append(toolSet.Tools, tool)
 
@@ -850,6 +913,23 @@ func swaggerSchemaToMCPSchemaV2(oapiSchema *spec.Schema, definitions spec.Defini
 		}
 	}
 	return mcpSchema, nil
+}
+
+func findResponseSchemaV2(op *spec.Operation) *spec.Schema {
+	if op == nil {
+		return nil
+	}
+	for code := 200; code <= 299; code++ {
+		if resp, ok := op.Responses.StatusCodeResponses[code]; ok {
+			if resp.Schema != nil {
+				return resp.Schema
+			}
+		}
+	}
+	if op.Responses.Default != nil && op.Responses.Default.Schema != nil {
+		return op.Responses.Default.Schema
+	}
+	return nil
 }
 
 func resolveRefV2(ref spec.Ref, definitions spec.Definitions) (*spec.Schema, error) {

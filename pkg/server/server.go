@@ -272,7 +272,7 @@ func writeSSEEvent(w http.ResponseWriter, eventName string, data interface{}) er
 	if strData, ok := data.(string); ok && eventName == "endpoint" { // Special case for endpoint URL
 		dataStr = strData
 	} else {
-		jsonData, err := json.Marshal(data)
+		jsonData, err := json.MarshalIndent(data, "", "  ")
 		if err != nil {
 			return fmt.Errorf("failed to marshal data for SSE event '%s': %w", eventName, err)
 		}
@@ -433,9 +433,17 @@ func httpMethodPostHandler(w http.ResponseWriter, r *http.Request, toolSet *mcp.
 			fmt.Fprintln(w, "Notification received.")
 			return // Return early, do not send anything on SSE channel
 		case "tools/list":
+			incomingListJSON, _ := json.MarshalIndent(req, "", "  ")
+			log.Printf("DEBUG: Handling 'tools/list' for %s. Incoming request: %s", connID, string(incomingListJSON))
 			respToSend = handleToolsListJSONRPC(connID, &req, toolSet)
+			outgoingListJSON, _ := json.MarshalIndent(respToSend, "", "  ")
+			log.Printf("DEBUG: Prepared 'tools/list' response for %s. Outgoing response: %s", connID, string(outgoingListJSON))
 		case "tools/call":
-			respToSend = handleToolCallJSONRPC(connID, &req, toolSet, cfg, r)
+			incomingCallJSON, _ := json.MarshalIndent(req, "", "  ")
+			log.Printf("DEBUG: Handling 'tools/call' for %s. Incoming request: %s", connID, string(incomingCallJSON))
+			respToSend = handleToolCallJSONRPC(connID, &req, toolSet, cfg, r.Header, r.Cookies())
+			outgoingCallJSON, _ := json.MarshalIndent(respToSend, "", "  ")
+			log.Printf("DEBUG: Prepared 'tools/call' response for %s. Outgoing response: %s", connID, string(outgoingCallJSON))
 		default:
 			log.Printf("Received unknown JSON-RPC method '%s' for %s", req.Method, connID)
 			respToSend = createJSONRPCError(reqID, -32601, fmt.Sprintf("Method not found: %s", req.Method), nil)
@@ -519,9 +527,9 @@ func handleToolsListJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Too
 }
 
 // executeToolCall performs the actual HTTP request based on the resolved operation and parameters.
-// It now correctly handles API key injection based on the *cfg* parameter.
-// accepts clientHeaders to forward request headers from the MCP client.
-func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.Config, clientHeaders http.Header) (*http.Response, error) {
+// It handles API key injection based on the *cfg* parameter and
+// accepts clientHeaders and clientCookies to forward request headers and cookies from the MCP client.
+func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.Config, clientHeaders http.Header, clientCookies []*http.Cookie) (*http.Response, error) {
 	toolName := params.ToolName
 	toolInput := params.Input // This is the map[string]interface{} from the client
 
@@ -555,7 +563,7 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 	path := operation.Path
 	queryParams := url.Values{}
 	pathParams := make(map[string]string)
-	headerParams := make(http.Header) // For headers to addAdd commentMore actions
+	headerParams := make(http.Header) // For headers to add
 	if clientHeaders != nil {
 		for key, values := range clientHeaders {
 			for _, v := range values {
@@ -563,8 +571,10 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 			}
 		}
 	}
-
-	cookieParams := []*http.Cookie{}         // For cookies to add
+	cookieParams := []*http.Cookie{} // For cookies to add
+	if clientCookies != nil {
+		cookieParams = append(cookieParams, clientCookies...)
+	}
 	bodyData := make(map[string]interface{}) // For building the request body
 	requestBodyRequired := operation.Method == "POST" || operation.Method == "PUT" || operation.Method == "PATCH"
 
@@ -690,54 +700,54 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 	var reqBody io.Reader
 	var bodyBytes []byte // Keep for logging
 
-	// Process SetHeaderToBody config
-	for _, mapping := range cfg.SetHeaderToBody {
-		parts := strings.SplitN(mapping, "=", 2)
-		if len(parts) == 2 {
-			keyParts := strings.SplitN(parts[0], ".", 2)
-			if len(keyParts) == 2 && keyParts[0] == toolName {
-				bodyPath := keyParts[1]
-				headerSource := parts[1]
+	if requestBodyRequired {
+		// Process SetHeaderToBody config first
+		for _, mapping := range cfg.SetHeaderToBody {
+			parts := strings.SplitN(mapping, "=", 2)
+			if len(parts) == 2 {
+				keyParts := strings.SplitN(parts[0], ".", 2)
+				if len(keyParts) == 2 && keyParts[0] == toolName {
+					bodyPath := keyParts[1]
+					headerSource := parts[1]
 
-				if strings.HasPrefix(headerSource, "headers.") {
-					headerName := strings.TrimPrefix(headerSource, "headers.")
-					headerValue := clientHeaders.Get(headerName)
-					if headerValue != "" {
-						setNestedValue(bodyData, bodyPath, headerValue)
-						log.Printf("[ExecuteToolCall] Injected header '%s' into body path '%s' for tool '%s'", headerName, bodyPath, toolName)
+					if strings.HasPrefix(headerSource, "headers.") {
+						headerName := strings.TrimPrefix(headerSource, "headers.")
+						headerValue := clientHeaders.Get(headerName)
+						if headerValue != "" {
+							setNestedValue(bodyData, bodyPath, headerValue, toolName)
+						} else {
+							log.Printf("[ExecuteToolCall] Header '%s' not found in client request, skipping injection to body path '%s' for tool '%s'", headerName, bodyPath, toolName)
+						}
 					} else {
-						log.Printf("[ExecuteToolCall] Header '%s' not found in client request, skipping injection to body path '%s' for tool '%s'", headerName, bodyPath, toolName)
+						log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected '{toolName}.{bodyPath}=headers.{headerName}'", mapping)
 					}
-				} else {
-					log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected '{toolName}.{bodyPath}=headers.{headerName}'", mapping)
 				}
+			} else {
+				log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected '{toolName}.{bodyPath}=headers.{headerName}'", mapping)
 			}
-		} else {
-			log.Printf("[ExecuteToolCall] Invalid SetHeaderToBody mapping format: %s. Expected '{toolName}.{bodyPath}=headers.{headerName}'", mapping)
 		}
-	}
 
-	if requestBodyRequired && len(bodyData) > 0 {
-		// Inject custom body values from SetBody config
+		// Process SetBody config, potentially overwriting SetHeaderToBody values
 		for _, kv := range cfg.SetBody {
 			parts := strings.SplitN(kv, "=", 2)
 			if len(parts) == 2 {
 				keyParts := strings.SplitN(parts[0], ".", 2)
 				if len(keyParts) == 2 && keyParts[0] == toolName {
-					setNestedValue(bodyData, keyParts[1], parts[1])
-					log.Printf("[ExecuteToolCall] Injected body value for tool '%s': %s=%s", toolName, keyParts[1], parts[1])
+					setNestedValue(bodyData, keyParts[1], parts[1], toolName)
 				}
 			}
 		}
 
-		var err error
-		bodyBytes, err = json.Marshal(bodyData)
-		if err != nil {
-			log.Printf("[ExecuteToolCall] Error marshalling request body: %v", err)
-			return nil, fmt.Errorf("error marshalling request body: %w", err)
+		if len(bodyData) > 0 {
+			var err error
+			bodyBytes, err = json.Marshal(bodyData)
+			if err != nil {
+				log.Printf("[ExecuteToolCall] Error marshalling request body: %v", err)
+				return nil, fmt.Errorf("error marshalling request body: %w", err)
+			}
+			reqBody = bytes.NewBuffer(bodyBytes)
+			log.Printf("[ExecuteToolCall] Request body: %s", string(bodyBytes))
 		}
-		reqBody = bytes.NewBuffer(bodyBytes)
-		log.Printf("[ExecuteToolCall] Request body: %s", string(bodyBytes))
 	}
 
 	// --- Create HTTP Request ---
@@ -803,7 +813,10 @@ func executeToolCall(params *ToolCallParams, toolSet *mcp.ToolSet, cfg *config.C
 	return resp, nil
 }
 
-func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.ToolSet, cfg *config.Config, r *http.Request) jsonRPCResponse {
+// handleToolCallJSONRPC processes a 'tools/call' JSON-RPC request. It forwards
+// any headers and cookies from the originating HTTP request via the clientHeaders
+// and clientCookies arguments so they can be applied to the outgoing API request.
+func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.ToolSet, cfg *config.Config, clientHeaders http.Header, clientCookies []*http.Cookie) jsonRPCResponse {
 	// req.Params is interface{}, but should contain json.RawMessage for tools/call
 	rawParams, ok := req.Params.(json.RawMessage)
 	if !ok {
@@ -835,13 +848,13 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 	log.Printf("Executing tool '%s' for %s with input: %+v", params.ToolName, connID, params.Input)
 
 	// --- Pass ConnID if needed ---
-	if cfg.PassConnID && r.Header.Get("X-Connection-ID") == "" {
-		r.Header.Set("X-Connection-ID", connID)
+	if cfg.PassConnID && clientHeaders.Get("X-Connection-ID") == "" {
+		clientHeaders.Set("X-Connection-ID", connID)
 		log.Printf("Passing connection ID to downstream tool in X-Connection-ID header: %s", connID)
 	}
 
 	// --- Execute the actual tool call ---
-	httpResp, execErr := executeToolCall(&params, toolSet, cfg, r.Header)
+	httpResp, execErr := executeToolCall(&params, toolSet, cfg, clientHeaders, clientCookies)
 
 	// --- Process Response ---
 	var resultPayload ToolResultPayload
@@ -870,23 +883,20 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 			log.Printf("Received response body for tool '%s': %s", params.ToolName, string(bodyBytes))
 			// Check status code for API-level errors
 			if httpResp.StatusCode < 200 || httpResp.StatusCode >= 300 {
+				// Put error details into the Content field so MCP clients can access them
+				errText := fmt.Sprintf("Tool '%s' API call failed with status %s: %s", params.ToolName, httpResp.Status, string(bodyBytes))
 				resultPayload = ToolResultPayload{
 					IsError: true,
-					Error: &MCPError{
-						Code:    httpResp.StatusCode,
-						Message: fmt.Sprintf("Tool '%s' API call failed with status %s", params.ToolName, httpResp.Status),
-						Data:    string(bodyBytes), // Include response body in error data
-					},
+					Content: []ToolResultContent{{
+						Type: "text",
+						Text: errText,
+					}},
 					ToolCallID: fmt.Sprintf("%v", req.ID),
 				}
 			} else {
 				// Successful execution
-				resultContent := []ToolResultContent{
-					{
-						Type: "text", // TODO: Handle JSON responses properly if Content-Type indicates it
-						Text: string(bodyBytes),
-					},
-				}
+				resultContent := []ToolResultContent{{Type: "text", Text: string(bodyBytes)}}
+
 				resultPayload = ToolResultPayload{
 					Content:    resultContent,
 					IsError:    false,
@@ -965,16 +975,27 @@ func tryWriteHTTPError(w http.ResponseWriter, code int, message string) {
 }
 
 // setNestedValue sets a value in a nested map based on a dot-separated key.
-func setNestedValue(data map[string]interface{}, key string, value string) {
+func setNestedValue(data map[string]interface{}, key string, value string, toolName string) {
 	parts := strings.Split(key, ".")
 	for i, part := range parts {
 		if i == len(parts)-1 {
+			if existing, ok := data[part]; ok {
+				log.Printf("[ExecuteToolCall] Overwriting body field for tool '%s'. Path: '%s', Old: '%v', New: '%s'", toolName, key, existing, value)
+			} else {
+				log.Printf("[ExecuteToolCall] Setting body field for tool '%s'. Path: '%s', Value: '%s'", toolName, key, value)
+			}
 			data[part] = value
 		} else {
 			if _, ok := data[part]; !ok {
 				data[part] = make(map[string]interface{})
 			}
-			data = data[part].(map[string]interface{})
+			// Type assertion to ensure we can continue traversing
+			if nextMap, ok := data[part].(map[string]interface{}); ok {
+				data = nextMap
+			} else {
+				log.Printf("[ExecuteToolCall] Warning: Cannot set nested value for key '%s'. Path '%s' is not a map.", key, part)
+				return
+			}
 		}
 	}
 }
