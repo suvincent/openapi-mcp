@@ -848,8 +848,8 @@ func handleToolCallJSONRPC(connID string, req *jsonRPCRequest, toolSet *mcp.Tool
 	log.Printf("Executing tool '%s' for %s with input: %+v", params.ToolName, connID, params.Input)
 
 	// --- Pass ConnID if needed ---
-	if cfg.PassConnID && r.Header.Get("X-Connection-ID") == "" {
-		r.Header.Set("X-Connection-ID", connID)
+	if cfg.PassConnID && clientHeaders.Get("X-Connection-ID") == "" {
+		clientHeaders.Set("X-Connection-ID", connID)
 		log.Printf("Passing connection ID to downstream tool in X-Connection-ID header: %s", connID)
 	}
 
